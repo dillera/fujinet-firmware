@@ -44,6 +44,7 @@ jobs:
       run: sed -i "s/^;\{0,1\}build_platform = BUILD_ATARI/build_platform = BUILD_ATARI/" /home/runner/work/fujinet-platformio/fujinet-platformio/platformio.ini
 
     - name: Run PlatformIO - failboat
+      continue-on-error: true
       run: pio run 
 
     - name: Fix up dirent.h
