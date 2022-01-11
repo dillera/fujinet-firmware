@@ -53,8 +53,13 @@ jobs:
     - name: Fix up dirent.h
       run: printf "\n\n\n#ifdef __cplusplus\n}\n#endif\n\n" >> /home/runner/.platformio/packages/framework-espidf/components/newlib/platform_include/sys/dirent.h
 
-    - name: Verify dirent.h
+    - name: Verify dirent.h bottom
       run: tail -n 10 /home/runner/.platformio/packages/framework-espidf/components/newlib/platform_include/sys/dirent.h
+    - name: Verify dirent.h top
+      run: head -n 30 /home/runner/.platformio/packages/framework-espidf/components/newlib/platform_include/sys/dirent.h
+
+
+
 
     - name: Run PlatformIO - winboat
       run: pio run 
