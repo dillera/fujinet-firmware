@@ -49,11 +49,9 @@ jobs:
 
     - name: Fix up dirent.h
       run: awk '1;/#include <stdint.h>/{print "\n#ifdef __cplusplus\nextern "C" {\n#endif\n\n"}' /home/runner/.platformio/packages/framework-espidf/components/newlib/platform_include/sys/dirent.h
-      if: always()
 
     - name: Fix up dirent.h
-      run: echo '#ifdef __cplusplus\n}\n#endif\n' >> /home/runner/.platformio/packages/framework-espidf/components/newlib/platform_include/sys/dirent.h
-      if: always()
+      run: printf "#ifdef __cplusplus\n}\n#endif\n" >> /home/runner/.platformio/packages/framework-espidf/components/newlib/platform_include/sys/dirent.h
 
     - name: Run PlatformIO - win boat
       run: pio run 
