@@ -43,11 +43,21 @@ jobs:
     - name: Select ATARI Build
       run: sed -i "s/^;\{0,1\}build_platform = BUILD_ATARI/build_platform = BUILD_ATARI/" /home/runner/work/fujinet-platformio/fujinet-platformio/platformio.ini
 
-    - name: Fix up dirent.h start
+    - name: Fix up dirent.h start 1
       run: awk '1;/#include <stdint.h>/{print "\n#ifdef __cplusplus\nextern "C" {\n#endif\n\n"}' /home/runner/.platformio/packages/toolchain-xtensa32/xtensa-esp32-elf/include/sys/dirent.h
+    - name: Fix up dirent.h start 2
+      run: awk '1;/#include <stdint.h>/{print "\n#ifdef __cplusplus\nextern "C" {\n#endif\n\n"}' /home/runner/.platformio/packages/toolchain-xtensa-esp32/xtensa-esp32-elf/sys-include/dirent.h
+    - name: Fix up dirent.h start 3
+      run: awk '1;/#include <stdint.h>/{print "\n#ifdef __cplusplus\nextern "C" {\n#endif\n\n"}' /home/runner/.platformio/packages/framework-espidf/components/newlib/platform_include/sys/dirent.h
 
-    - name: Fix up dirent.h end
+
+    - name: Fix up dirent.h end 1 
       run: echo '#ifdef __cplusplus\n}\n#endif\n' >> /home/runner/.platformio/packages/toolchain-xtensa32/xtensa-esp32-elf/include/sys/dirent.h
+    - name: Fix up dirent.h end 2
+      run: echo '#ifdef __cplusplus\n}\n#endif\n' >> /home/runner/.platformio/packages/toolchain-xtensa-esp32/xtensa-esp32-elf/sys-include/dirent.h
+    - name: Fix up dirent.h end 3
+      run: echo '#ifdef __cplusplus\n}\n#endif\n' >> /home/runner/.platformio/packages/framework-espidf/components/newlib/platform_include/sys/dirent.h
+
 
 
     - name: Run PlatformIO
