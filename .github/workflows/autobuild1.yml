@@ -64,11 +64,15 @@ jobs:
     - name: Build Filesystem
       run: pio run -t buildfs
     - name: Show Working Directory
-      run: ls -la
+      run: pwd; ls -la
     - name: Show Build Artifacts
-      run: ls -la .pio/build/fujinet-v1
+      run: ls -la .pio/build/fujinet-v1/*.bin
       
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v2.3.1
+      with:
+        name: fujinet-release
+        path: .pio/build/fujinet-v1/*.bin
+        
         
 # end
