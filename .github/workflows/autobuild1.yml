@@ -47,10 +47,10 @@ jobs:
       continue-on-error: true
       run: pio run 
 
-    - name: Fix up dirent.h
+    - name: Fix up dirent.h top
       run: gawk -i inplace '1;/#include\ <stdint.h>/{print "\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n"}' /home/runner/.platformio/packages/framework-espidf/components/newlib/platform_include/sys/dirent.h
 
-    - name: Fix up dirent.h
+    - name: Fix up dirent.h bottom
       run: printf "\n\n\n#ifdef __cplusplus\n}\n#endif\n\n" >> /home/runner/.platformio/packages/framework-espidf/components/newlib/platform_include/sys/dirent.h
 
     - name: Verify dirent.h bottom
@@ -59,12 +59,16 @@ jobs:
       run: head -n 30 /home/runner/.platformio/packages/framework-espidf/components/newlib/platform_include/sys/dirent.h
 
 
-
-
-    - name: Run PlatformIO - winboat
+    - name: Run PlatformIO Build - winboat
       run: pio run 
-    - name: Build FS
+    - name: Build Filesystem
       run: pio run -t buildfs
-    - name: Show Directory
-      run: ls -l
+    - name: Show Working Directory
+      run: ls -la
+    - name: Show Build Artifacts
+      run: ls -la .pio/build/fujinet-v1
       
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v2.3.1
+        
+# end
