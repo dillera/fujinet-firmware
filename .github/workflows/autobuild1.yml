@@ -6,6 +6,9 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target-platform: [ATARI, ADAM]
 
     steps:
     - uses: actions/checkout@v2
@@ -41,7 +44,7 @@ jobs:
       run: cp /home/runner/work/fujinet-platformio/fujinet-platformio/platformio-sample.ini /home/runner/work/fujinet-platformio/fujinet-platformio/platformio.ini
 
     - name: Select ATARI Build
-      run: sed -i "s/^;\{0,1\}build_platform = BUILD_ATARI/build_platform = BUILD_ATARI/" /home/runner/work/fujinet-platformio/fujinet-platformio/platformio.ini
+      run: sed -i "s/^;\{0,1\}build_platform = BUILD_${{ matrix.target-platform }}/build_platform = BUILD_${{ matrix.target-platform }}/" /home/runner/work/fujinet-platformio/fujinet-platformio/platformio.ini
 
     - name: Run PlatformIO - failboat
       continue-on-error: true
@@ -71,7 +74,7 @@ jobs:
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v2.3.1
       with:
-        name: fujinet-release
+        name: fujinet-release-${{ matrix.target-platform }}
         path: .pio/build/fujinet-v1/*.bin
         
         
