@@ -74,7 +74,7 @@ jobs:
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v2.3.1
       with:
-        name: fujinet-release-${{ matrix.target-platform }}
+        name: fujinet-${GITHUB_REF##*/}-${{ matrix.target-platform }}
         path: .pio/build/fujinet-v1/*.bin
         
         
