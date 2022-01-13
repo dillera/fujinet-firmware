@@ -4,11 +4,13 @@ on: [push]
 
 jobs:
   build:
-
+   
     runs-on: ubuntu-latest
     strategy:
       matrix:
         target-platform: [ATARI]
+    env:
+      ACTIONS_ALLOW_UNSECURE_COMMANDS : true
 
     steps:
     - uses: actions/checkout@v2
@@ -71,6 +73,7 @@ jobs:
     - name: Show Build Artifacts
       run: ls -la .pio/build/fujinet-v1/*.bin
     - name: Extract branch name
+      
       run: echo "::set-env name=BRANCH_NAME::$(echo ${GITHUB_REF#refs/heads/} | sed 's/\//_/g')"
     - name: Test
       run: echo "${BRANCH_NAME}"
