@@ -70,13 +70,17 @@ jobs:
       run: pwd; ls -la
     - name: Show Build Artifacts
       run: ls -la .pio/build/fujinet-v1/*.bin
-      
+	  - name: Extract branch name
+      run: echo "::set-env name=BRANCH_NAME::$(echo ${GITHUB_REF#refs/heads/} | sed 's/\//_/g')"
+    - name: Test
+      run: echo "${BRANCH_NAME}"
+
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v2.3.1
       with:
-        name: fujinet-${{ github.ref }}-${{ matrix.target-platform }}
+        name: fujinet-${BRANCH_NAME}-${{ matrix.target-platform }}
         path: .pio/build/fujinet-v1/*.bin
-        
+    
     - name: Prepare tag
       run: |
         export TAG=$(head -1 CHANGELOG.tmp | cut -d' ' -f2)
