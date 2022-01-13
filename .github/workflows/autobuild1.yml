@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target-platform: [ATARI, ADAM]
+        target-platform: [ATARI]
 
     steps:
     - uses: actions/checkout@v2
@@ -74,7 +74,7 @@ jobs:
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v2.3.1
       with:
-        name: fujinet-${GITHUB_REF##*/}-${{ matrix.target-platform }}
+        name: fujinet-${{ github.ref }}-${{ matrix.target-platform }}
         path: .pio/build/fujinet-v1/*.bin
         
     - name: Prepare tag
@@ -83,11 +83,11 @@ jobs:
         echo "TAG=$TAG" >> $GITHUB_ENV
     - name: Create Release
       uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ env.TAG }}
-          release_name: ${{ env.TAG }}
-          body_path: CHANGELOG.tmp  
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ env.TAG }}
+        release_name: ${{ env.TAG }}
+        body_path: CHANGELOG.tmp  
         
 # end
