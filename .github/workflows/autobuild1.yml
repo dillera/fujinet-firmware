@@ -83,11 +83,17 @@ jobs:
       with:
         name: fujinet-${BRANCH_NAME}-${{ matrix.target-platform }}
         path: .pio/build/fujinet-v1/*.bin
-    
+ 
+    - name: Set tag to short sha
+      run: echo "::set-output name=sha::${GITHUB_SHA_SHORT}"
+      id: mysha
+
+
     - name: Prepare tag
       run: |
-        export TAG=$(head -1 CHANGELOG.tmp | cut -d' ' -f2)
+        export TAG=${{ steps.mysha.outputs.sha }}
         echo "TAG=$TAG" >> $GITHUB_ENV
+        
     - name: Create Release
       uses: actions/create-release@v1
       env:
