@@ -106,6 +106,6 @@ jobs:
       with:
         tag_name: ${{ steps.vars.outputs.sha_short }}
         release_name: ${{ steps.vars.outputs.sha_short }}
-        body_path: CHANGELOG.tmp  
+        body: "andy test1"  
         
 # end
