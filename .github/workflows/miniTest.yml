@@ -47,10 +47,9 @@ jobs:
         color: 0x0000ff
         username: R2D2
      
-    - name: Discord notification 2
-      env:
-        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-      uses: Ilshidur/action-discord@master
+    - name: Run the GitHub Actions Status Embed Action
+      uses: SebastiaanZ/github-status-embed-for-discord@main
       with:
-        args: 'The project {{ EVENT_PAYLOAD.repository.full_name }} has been deployed.'
-
+        # Discord webhook
+        webhook_id: '1234567890'
+        webhook_token: ${{ secrets.DISCORD_WEBHOOK }}
