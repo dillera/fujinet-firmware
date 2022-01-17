@@ -1,10 +1,13 @@
 name: FujiNet PlatformIO CI
 
-on: [push]
-
+on:
+  push:
+    branches:
+      - release
+      
+      
 jobs:
   build:
-
     runs-on: ubuntu-latest
     strategy:
       matrix:
