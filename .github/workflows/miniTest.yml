@@ -38,12 +38,19 @@ jobs:
         python -m pip install --upgrade pip
         pip install --upgrade platformio
           
-    - name: Ping Discord
+    - name: Discord notification 1
       uses: sarisia/actions-status-discord@v1
       with:
-        webhook: ${{ secrets.DISCORD_HOOK_1 }}
+        webhook: ${{ secrets.DISCORD_WEBHOOK }}
         title: "testDeploy"
-        description: "Build and deploy to GitHub Pages"
+        description: "Build and deploy Test"
         color: 0x0000ff
         username: R2D2
      
+    - name: Discord notification 2
+      env:
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      uses: Ilshidur/action-discord@master
+      with:
+        args: 'The project {{ EVENT_PAYLOAD.repository.full_name }} has been deployed.'
+
