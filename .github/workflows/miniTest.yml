@@ -39,15 +39,21 @@ jobs:
       run: echo "::set-output name=theWebHook::${{ secrets.DISCORD_WEBHOOK }}"
  
     - name: Show Webhook
-      run: echo ${{ steps.myWebhook.outputs.theWebHook }}
- 
+      env:
+        webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
+      run: echo $webhookUrl
+      
+  
     - name: Test Success
       uses: rjstone/discord-webhook-notify@v1
       if: success()
+      env:
+        webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
       with:
         severity: info
         details: Test Succeeded!
-        webhookUrl: ${{ steps.myWebhook.outputs.theWebHook }}
+        webhookUrl: $webhookUrl
+        
 
     - name: Test Failure
       uses: rjstone/discord-webhook-notify@v1
