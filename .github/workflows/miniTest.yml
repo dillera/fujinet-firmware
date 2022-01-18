@@ -24,6 +24,7 @@ jobs:
         key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-
+          
     - name: Cache PlatformIO
       uses: actions/cache@v2
       with:
@@ -33,10 +34,12 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v2
  
-    - name: Get Git Short Hash
+    - name: Try and set the webhook
       id: myWebhook
       run: echo "::set-output name=theWebHook::${{ secrets.DISCORD_WEBHOOK }}"
  
+    - name: Show Webhook
+      run: echo ${{ steps.myWebhook.outputs.theWebHook }}
  
     - name: Test Success
       uses: rjstone/discord-webhook-notify@v1
@@ -60,4 +63,4 @@ jobs:
       with:
         severity: warn
         details: Test Cancelled!
-        webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
+        webhookUrl: ${{ steps.myWebhook.outputs.theWebHook }}
