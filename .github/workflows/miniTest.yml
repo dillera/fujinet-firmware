@@ -33,15 +33,24 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v2
      
-    - name: Discord 2    
-      uses: sarisia/actions-status-discord@v1
-      if: always()
+    - name: Test Success
+      uses: rjstone/discord-webhook-notify@v1
+      if: success()
       with:
-        webhook: ${{ secrets.DISCORD_WEBHOOK }}
-     
-    - name: Discord 2
-      uses: SebastiaanZ/github-status-embed-for-discord@main
+        severity: info
+        details: Test Succeeded!
+        webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
+    - name: Test Failure
+      uses: rjstone/discord-webhook-notify@v1
+      if: failure()
       with:
-        # Discord webhook
-        webhook_id: '1234567890'
-        webhook_token: ${{ secrets.DISCORD_WEBHOOK }}
+        severity: error
+        details: Test Failed!
+        webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
+    - name: Test Cancelled
+      uses: rjstone/discord-webhook-notify@v1
+      if: cancelled()
+      with:
+        severity: warn
+        details: Test Cancelled!
+        webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
