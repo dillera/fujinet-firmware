@@ -18,7 +18,9 @@
 // SPDX-License-Identifier: GPL-2.0-only or commercial
 
 #include "mongoose.h"
+#if defined(MG_TLS) && MG_TLS == MG_TLS_MBED && defined(MBEDTLS_PSA_CRYPTO_C)
 #include "psa/crypto.h"
+#endif
 
 #ifdef MG_ENABLE_LINES
 #line 1 "src/base64.c"

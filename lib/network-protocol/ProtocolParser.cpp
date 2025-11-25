@@ -9,7 +9,8 @@
 #include "TNFS.h"
 #include "FTP.h"
 #include "HTTP.h"
-#include "SSH.h"
+// Temporarily disabled due to libssh dependency
+// #include "SSH.h"
 #include "SMB.h"
 #include "SD.h"
 
@@ -49,9 +50,10 @@ NetworkProtocol* ProtocolParser::createProtocol(std::string scheme, std::string 
         case "HTTPS"_sh:
             protocol = new NetworkProtocolHTTP(receiveBuffer, transmitBuffer, specialBuffer);
             break;
-        case "SSH"_sh:
-            protocol = new NetworkProtocolSSH(receiveBuffer, transmitBuffer, specialBuffer);
-            break;
+        // Temporarily disabled due to libssh dependency
+        // case "SSH"_sh:
+        //     protocol = new NetworkProtocolSSH(receiveBuffer, transmitBuffer, specialBuffer);
+        //     break;
         case "SMB"_sh:
             protocol = new NetworkProtocolSMB(receiveBuffer, transmitBuffer, specialBuffer);
             break;

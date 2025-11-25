@@ -958,10 +958,11 @@ bool drivewireNetwork::instantiate_protocol()
     {
         protocol = new NetworkProtocolHTTP(receiveBuffer, transmitBuffer, specialBuffer);
     }
-    else if (urlParser->scheme == "SSH")
-    {
-        protocol = new NetworkProtocolSSH(receiveBuffer, transmitBuffer, specialBuffer);
-    }
+    // Temporarily disabled due to libssh dependency
+    // else if (urlParser->scheme == "SSH")
+    // {
+    //     protocol = new NetworkProtocolSSH(receiveBuffer, transmitBuffer, specialBuffer);
+    // }
     else if (urlParser->scheme == "SMB")
     {
         protocol = new NetworkProtocolSMB(receiveBuffer, transmitBuffer, specialBuffer);

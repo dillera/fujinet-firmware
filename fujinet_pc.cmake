@@ -236,7 +236,8 @@ set(SOURCES src/main.cpp
     lib/network-protocol/TNFS.h lib/network-protocol/TNFS.cpp
     lib/network-protocol/HTTP.h lib/network-protocol/HTTP.cpp
     lib/network-protocol/SMB.h lib/network-protocol/SMB.cpp
-    lib/network-protocol/SSH.h lib/network-protocol/SSH.cpp
+    # Temporarily disabled due to libssh dependency
+    # lib/network-protocol/SSH.h lib/network-protocol/SSH.cpp
     lib/network-protocol/SD.h lib/network-protocol/SD.cpp
     lib/fuji/fujiHost.h lib/fuji/fujiHost.cpp
     lib/fuji/fujiDisk.h lib/fuji/fujiDisk.cpp
@@ -470,9 +471,10 @@ add_subdirectory(components_pc/libsmb2)
 # - FujiNet (platfomio/ESP32) port
 # add_subdirectory(lib/libssh)
 # - Regular elease
-add_subdirectory(components_pc/libssh)
+# Temporarily disabled due to mbedTLS 4.x incompatibility
+# add_subdirectory(components_pc/libssh)
 
-target_link_libraries(fujinet pthread expat cjson cjson_utils smb2 ssh)
+target_link_libraries(fujinet pthread expat cjson cjson_utils smb2)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     target_link_libraries(fujinet ws2_32 bcrypt)
