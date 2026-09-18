@@ -79,32 +79,37 @@ int sit_rle90_decompress(sit_io *io, uint32_t outlen,
                           sit_sink_fn sink, void *ctx,
                           const sit_allocator *alloc)
 {
-    (void)alloc;
-
     sit_bytesrc src = { rle90_io_getbyte, io };
     sit_rle90_reader rd;
     sit_rle90_reader_init(&rd, src);
 
-    uint8_t outbuf[SIT_RLE90_OUTBUF];
+    /* outbuf is heap-allocated rather than kept as a stack local, so
+     * this decompressor's frame stays small on a constrained target. */
+    uint8_t *outbuf = (uint8_t *)alloc->alloc(SIT_RLE90_OUTBUF, alloc->ctx);
+    if (!outbuf) return SIT_E_NOMEM;
+
     size_t outpos = 0;
     uint32_t produced = 0;
+    int rc = SIT_OK;
 
     while (produced < outlen) {
         int c = sit_rle90_reader_getbyte(&rd);
-        if (c < 0) return rd.err ? rd.err : SIT_E_IO;
+        if (c < 0) { rc = rd.err ? rd.err : SIT_E_IO; goto done; }
 
         outbuf[outpos++] = (uint8_t)c;
         produced++;
 
         if (outpos == SIT_RLE90_OUTBUF) {
-            if (sink(outbuf, outpos, ctx)) return SIT_E_IO;
+            if (sink(outbuf, outpos, ctx)) { rc = SIT_E_IO; goto done; }
             outpos = 0;
         }
     }
 
     if (outpos) {
-        if (sink(outbuf, outpos, ctx)) return SIT_E_IO;
+        if (sink(outbuf, outpos, ctx)) rc = SIT_E_IO;
     }
 
-    return SIT_OK;
+done:
+    alloc->free(outbuf, alloc->ctx);
+    return rc;
 }

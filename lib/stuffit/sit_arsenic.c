@@ -476,32 +476,48 @@ int sit_arsenic_decompress(sit_io *io, uint32_t outlen,
                             const sit_allocator *alloc,
                             sit_progress *prog)
 {
-    arsenic_state st;
+    /* arsenic_state is ~9.7KB (7 mtfmodel[] entries plus initialmodel/
+     * selectormodel, each holding arsenic_symfreq symbols[128]) -
+     * heap-allocated here instead of kept as a local so it doesn't sit
+     * on a constrained caller's stack for the whole decode. */
+    arsenic_state *st;
+    uint8_t *outbuf;
     int rc;
 
-    rc = arsenic_open(&st, io, prog);
-    if (rc != SIT_OK) return rc;
+    st = (arsenic_state *)alloc->alloc(sizeof(*st), alloc->ctx);
+    if (!st) return SIT_E_NOMEM;
 
-    if (outlen == 0) return SIT_OK;
+    rc = arsenic_open(st, io, prog);
+    if (rc != SIT_OK) { alloc->free(st, alloc->ctx); return rc; }
 
-    st.block = alloc->alloc((size_t)st.blocksize, alloc->ctx);
-    if (!st.block) return SIT_E_NOMEM;
+    if (outlen == 0) { alloc->free(st, alloc->ctx); return SIT_OK; }
 
-    st.transform = alloc->alloc(sizeof(uint32_t) * (size_t)st.blocksize, alloc->ctx);
-    if (!st.transform) {
-        alloc->free(st.block, alloc->ctx);
+    st->block = alloc->alloc((size_t)st->blocksize, alloc->ctx);
+    if (!st->block) { alloc->free(st, alloc->ctx); return SIT_E_NOMEM; }
+
+    st->transform = alloc->alloc(sizeof(uint32_t) * (size_t)st->blocksize, alloc->ctx);
+    if (!st->transform) {
+        alloc->free(st->block, alloc->ctx);
+        alloc->free(st, alloc->ctx);
+        return SIT_E_NOMEM;
+    }
+
+    outbuf = (uint8_t *)alloc->alloc(ARSENIC_OUTBUF, alloc->ctx);
+    if (!outbuf) {
+        alloc->free(st->transform, alloc->ctx);
+        alloc->free(st->block, alloc->ctx);
+        alloc->free(st, alloc->ctx);
         return SIT_E_NOMEM;
     }
 
     {
-        uint8_t outbuf[ARSENIC_OUTBUF];
         size_t outfill = 0;
         uint32_t produced = 0;
 
         while (produced < outlen) {
             uint8_t b;
 
-            rc = arsenic_next_byte(&st, &b);
+            rc = arsenic_next_byte(st, &b);
             if (rc != SIT_OK) {
                 if (rc == SIT_E_EOF) rc = SIT_E_IO; /* fewer bytes than outlen promised */
                 break;
@@ -520,8 +536,10 @@ int sit_arsenic_decompress(sit_io *io, uint32_t outlen,
         if (produced == outlen) rc = SIT_OK;
     }
 
-    alloc->free(st.transform, alloc->ctx);
-    alloc->free(st.block, alloc->ctx);
+    alloc->free(outbuf, alloc->ctx);
+    alloc->free(st->transform, alloc->ctx);
+    alloc->free(st->block, alloc->ctx);
+    alloc->free(st, alloc->ctx);
 
     return rc;
 }

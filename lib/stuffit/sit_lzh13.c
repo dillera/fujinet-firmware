@@ -554,12 +554,22 @@ int sit_lzh13_decompress(sit_io *io, uint32_t outlen,
     }
     memset(window, 0, LZH13_WINDOW_SIZE);
 
+    /* outbuf (2KB) is heap-allocated alongside window rather than kept
+     * as a stack local, for the same reason. */
+    uint8_t *outbuf = alloc->alloc(LZH13_OUTBUF, alloc->ctx);
+    if (!outbuf) {
+        alloc->free(window, alloc->ctx);
+        sit_pc_free(&firstcode, alloc);
+        if (!shared_second) sit_pc_free(&secondcode, alloc);
+        sit_pc_free(&offsetcode, alloc);
+        return SIT_E_NOMEM;
+    }
+
     sit_prefix_code *currcode = &firstcode;
     uint32_t pos = 0;
     uint32_t matchoffset = 0;
     int matchlength = 0;
 
-    uint8_t outbuf[LZH13_OUTBUF];
     size_t outpos = 0;
 
     rc = SIT_OK;
@@ -638,6 +648,7 @@ int sit_lzh13_decompress(sit_io *io, uint32_t outlen,
         if (sink(outbuf, outpos, ctx)) rc = SIT_E_IO;
     }
 
+    alloc->free(outbuf, alloc->ctx);
     alloc->free(window, alloc->ctx);
     sit_pc_free(&firstcode, alloc);
     if (!shared_second) sit_pc_free(&secondcode, alloc);

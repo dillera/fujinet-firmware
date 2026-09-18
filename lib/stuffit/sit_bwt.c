@@ -7,11 +7,19 @@
 
 void sit_bwt_inverse_transform(uint32_t *transform, const uint8_t *block, uint32_t blocklen)
 {
-    uint32_t counts[256] = {0};
-    uint32_t cumulativecounts[256];
+    /* counts[]/cumulativecounts[] are 1KB each (2KB combined) - kept as
+     * function-static storage rather than stack locals so a
+     * constrained caller's stack frame here stays small. Safe because
+     * this function is never called reentrantly or recursively (one
+     * Arsenic block is fully inverse-transformed before the next
+     * begins) and both arrays are fully rewritten by this function
+     * before being read, on every call. */
+    static uint32_t counts[256];
+    static uint32_t cumulativecounts[256];
     uint32_t i;
     int c;
 
+    for (i = 0; i < 256; i++) counts[i] = 0;
     for (i = 0; i < blocklen; i++) counts[block[i]]++;
 
     uint32_t total = 0;

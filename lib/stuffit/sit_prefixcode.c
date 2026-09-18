@@ -75,7 +75,14 @@ int sit_pc_build_from_bitstream(sit_prefix_code *pc, sit_bitreader *br)
      * (runs into SIT_E_LIMIT via the capacity/stack bounds below) or
      * produces a tree that later decode calls detect via an open
      * branch (SIT_E_CORRUPT, see sit_pc_decode_bits). */
-    int pending[SIT_PC_MAX_TREE_DEPTH]; /* pending "build node N's one-branch" */
+    /* pending "build node N's one-branch": 512 ints (2KB) - kept as
+     * function-static storage rather than a stack local so a
+     * constrained caller's stack frame here stays small. Safe because
+     * this function is not reentrant/recursive (one self-describing
+     * tree is fully parsed, sp reset to 0, before any later call could
+     * reuse it) and every slot actually read (indices below sp) was
+     * written earlier in this same call. */
+    static int pending[SIT_PC_MAX_TREE_DEPTH];
     int sp = 0;
     int curr = 0; /* root, already allocated by sit_pc_init */
 

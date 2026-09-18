@@ -38,7 +38,12 @@ int sit_huffman_decompress(sit_io *io, uint32_t outlen,
     rc = sit_pc_build_from_bitstream(&pc, &br);
     if (rc != SIT_OK) { sit_pc_free(&pc, alloc); return rc; }
 
-    uint8_t outbuf[SIT_HUFFMAN_OUTBUF];
+    /* outbuf (1KB) is heap-allocated rather than kept as a stack local,
+     * so this decompressor's frame stays small on a constrained
+     * target. */
+    uint8_t *outbuf = alloc->alloc(SIT_HUFFMAN_OUTBUF, alloc->ctx);
+    if (!outbuf) { sit_pc_free(&pc, alloc); return SIT_E_NOMEM; }
+
     size_t outpos = 0;
     uint32_t produced = 0;
 
@@ -60,6 +65,7 @@ done:
     if (rc == SIT_OK && outpos) {
         if (sink(outbuf, outpos, ctx)) rc = SIT_E_IO;
     }
+    alloc->free(outbuf, alloc->ctx);
     sit_pc_free(&pc, alloc);
     return rc;
 }

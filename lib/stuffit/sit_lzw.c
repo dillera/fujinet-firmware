@@ -84,6 +84,7 @@ typedef struct {
 
 #define LZW_MAXSYMBOLS      16384 /* 1 << (0x8e & 0x1f) */
 #define LZW_RESERVEDSYMBOLS 1     /* blockmode: code 256 reserved as "clear" */
+#define LZW_OUTBUF          1024
 
 typedef struct {
     lzw_node *nodes;      /* [maxsymbols] */
@@ -213,10 +214,18 @@ int sit_lzw_decompress(sit_io *io, uint32_t outlen,
     uint8_t *scratch = alloc->alloc((size_t)LZW_MAXSYMBOLS, alloc->ctx);
     if (!scratch) { lzw_dict_free(&dict, alloc); return SIT_E_NOMEM; }
 
+    /* outbuf (1KB) is heap-allocated alongside scratch rather than kept
+     * as a stack local, for the same reason. */
+    uint8_t *outbuf = alloc->alloc(LZW_OUTBUF, alloc->ctx);
+    if (!outbuf) {
+        alloc->free(scratch, alloc->ctx);
+        lzw_dict_free(&dict, alloc);
+        return SIT_E_NOMEM;
+    }
+
     lzw_br br;
     lzw_br_init(&br, io);
 
-    uint8_t outbuf[1024];
     size_t outpos = 0;
     uint32_t produced = 0;
     long symbolcounter = 0;
@@ -256,7 +265,7 @@ int sit_lzw_decompress(sit_io *io, uint32_t outlen,
 
         int off = 0;
         while (off < n) {
-            size_t space = sizeof(outbuf) - outpos;
+            size_t space = LZW_OUTBUF - outpos;
             size_t chunk = (size_t)(n - off);
             if (chunk > space) chunk = space;
             if ((uint32_t)chunk > outlen - produced) chunk = (size_t)(outlen - produced);
@@ -267,7 +276,7 @@ int sit_lzw_decompress(sit_io *io, uint32_t outlen,
             off += (int)chunk;
             produced += (uint32_t)chunk;
 
-            if (outpos == sizeof(outbuf)) {
+            if (outpos == LZW_OUTBUF) {
                 if (sink(outbuf, outpos, ctx)) { rc = SIT_E_IO; goto done; }
                 outpos = 0;
             }
@@ -278,6 +287,7 @@ done:
     if (rc == SIT_OK && outpos) {
         if (sink(outbuf, outpos, ctx)) rc = SIT_E_IO;
     }
+    alloc->free(outbuf, alloc->ctx);
     alloc->free(scratch, alloc->ctx);
     lzw_dict_free(&dict, alloc);
     return rc;

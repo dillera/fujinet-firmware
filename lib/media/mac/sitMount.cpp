@@ -230,9 +230,36 @@ static bool sit_mount_decode_ndif(uint8_t **image_buf, uint32_t *image_len,
 }
 #endif // SIT_MOUNT_HAVE_NDIF
 
+// sit_archive is large (its StuffIt5 directory table alone is tens of
+// KB - SIT_MAX_DIR_TABLE entries of SIT_MAX_PATH bytes each) and
+// sit_entry is ~300 bytes; extract() below heap-allocates all three
+// (through sit_mount_allocator, so they land in PSRAM) rather than
+// keeping them as locals, to keep its own stack frame small. This
+// helper frees whichever of them are non-null, for use on every one
+// of extract()'s many early-return paths.
+static void sit_mount_free_locals(sit_archive *ar, sit_entry *e, sit_entry *best)
+{
+    if (ar != nullptr)
+        sit_mount_allocator.free(ar, sit_mount_allocator.ctx);
+    if (e != nullptr)
+        sit_mount_allocator.free(e, sit_mount_allocator.ctx);
+    if (best != nullptr)
+        sit_mount_allocator.free(best, sit_mount_allocator.ctx);
+}
+
 bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
 {
     release();
+
+    sit_archive *ar = (sit_archive *)sit_mount_allocator.alloc(sizeof(sit_archive), sit_mount_allocator.ctx);
+    sit_entry *e = (sit_entry *)sit_mount_allocator.alloc(sizeof(sit_entry), sit_mount_allocator.ctx);
+    sit_entry *best = (sit_entry *)sit_mount_allocator.alloc(sizeof(sit_entry), sit_mount_allocator.ctx);
+    if (ar == nullptr || e == nullptr || best == nullptr)
+    {
+        Debug_printf("\nStuffIt: no PSRAM for archive/entry state for '%s'", archive_filename);
+        sit_mount_free_locals(ar, e, best);
+        return false;
+    }
 
     // --- Is this a BinHex-wrapped archive? ---
     bool looks_like_hqx = false;
@@ -254,6 +281,7 @@ bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
     if (fseek(archive_fh, 0, SEEK_SET) != 0)
     {
         Debug_printf("\nStuffIt: cannot seek archive '%s'", archive_filename);
+        sit_mount_free_locals(ar, e, best);
         return false;
     }
 
@@ -273,6 +301,7 @@ bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
             {
                 Debug_printf("\nStuffIt: hqx_data_fork() (fmemopen) failed for '%s'", archive_filename);
                 hqx_close(&hqx);
+                sit_mount_free_locals(ar, e, best);
                 return false;
             }
             sit_source = hqx_fh;
@@ -286,12 +315,12 @@ bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
         else
         {
             Debug_printf("\nStuffIt: BinHex decode of '%s' failed: %s", archive_filename, sit_strerror(hrc));
+            sit_mount_free_locals(ar, e, best);
             return false;
         }
     }
 
-    sit_archive ar;
-    int rc = sit_open(&ar, sit_source, &sit_mount_allocator);
+    int rc = sit_open(ar, sit_source, &sit_mount_allocator);
     if (rc != SIT_OK)
     {
         Debug_printf("\nStuffIt: '%s' is not a recognized SIT!/StuffIt5 archive: %s",
@@ -300,6 +329,7 @@ bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
             fclose(hqx_fh);
         if (have_hqx)
             hqx_close(&hqx);
+        sit_mount_free_locals(ar, e, best);
         return false;
     }
 
@@ -309,21 +339,20 @@ bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
     // skipped. sit_extract() can be called on a saved sit_entry after the
     // iterator has moved on (it seeks the FILE* via the entry's own
     // stored offsets), so a single forward pass is enough.
-    sit_entry e, best;
     bool have_candidate = false;
     bool best_preferred = false;
 
-    while ((rc = sit_next_entry(&ar, &e)) == 1)
+    while ((rc = sit_next_entry(ar, e)) == 1)
     {
-        if (e.data_len == 0)
+        if (e->data_len == 0)
             continue;
 
-        bool preferred = sit_mount_has_image_ext(e.path);
+        bool preferred = sit_mount_has_image_ext(e->path);
         if (!have_candidate ||
             (preferred && !best_preferred) ||
-            (preferred == best_preferred && e.data_len > best.data_len))
+            (preferred == best_preferred && e->data_len > best->data_len))
         {
-            best = e;
+            *best = *e;
             best_preferred = preferred;
             have_candidate = true;
         }
@@ -332,60 +361,65 @@ bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
     if (rc < 0)
     {
         Debug_printf("\nStuffIt: error walking '%s': %s", archive_filename, sit_strerror(rc));
-        sit_close(&ar);
+        sit_close(ar);
         if (hqx_fh != nullptr)
             fclose(hqx_fh);
         if (have_hqx)
             hqx_close(&hqx);
+        sit_mount_free_locals(ar, e, best);
         return false;
     }
 
     if (!have_candidate)
     {
         Debug_printf("\nStuffIt: '%s' has no disk image entry", archive_filename);
-        sit_close(&ar);
+        sit_close(ar);
         if (hqx_fh != nullptr)
             fclose(hqx_fh);
         if (have_hqx)
             hqx_close(&hqx);
+        sit_mount_free_locals(ar, e, best);
         return false;
     }
 
-    if (best.data_len > SIT_MOUNT_MAX_IMAGE)
+    if (best->data_len > SIT_MOUNT_MAX_IMAGE)
     {
         Debug_printf("\nStuffIt: '%s' inner image '%s' is %u bytes, over the %u byte PSRAM cap",
-                     archive_filename, best.path, best.data_len, SIT_MOUNT_MAX_IMAGE);
-        sit_close(&ar);
+                     archive_filename, best->path, best->data_len, SIT_MOUNT_MAX_IMAGE);
+        sit_close(ar);
         if (hqx_fh != nullptr)
             fclose(hqx_fh);
         if (have_hqx)
             hqx_close(&hqx);
+        sit_mount_free_locals(ar, e, best);
         return false;
     }
 
-    image_buf = (uint8_t *)heap_caps_malloc(best.data_len, MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
+    image_buf = (uint8_t *)heap_caps_malloc(best->data_len, MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
     if (image_buf == nullptr)
     {
-        Debug_printf("\nStuffIt: no PSRAM for a %u byte image ('%s')", best.data_len, best.path);
-        sit_close(&ar);
+        Debug_printf("\nStuffIt: no PSRAM for a %u byte image ('%s')", best->data_len, best->path);
+        sit_close(ar);
         if (hqx_fh != nullptr)
             fclose(hqx_fh);
         if (have_hqx)
             hqx_close(&hqx);
+        sit_mount_free_locals(ar, e, best);
         return false;
     }
 
-    sit_mount_sink_ctx dctx = { image_buf, best.data_len, 0, SIT_MOUNT_PROGRESS_STEP, "data fork" };
+    sit_mount_sink_ctx dctx = { image_buf, best->data_len, 0, SIT_MOUNT_PROGRESS_STEP, "data fork" };
     sit_progress prog;
-    rc = sit_extract(&ar, &best, SIT_FORK_DATA, sit_mount_sink, &dctx, &prog);
+    rc = sit_extract(ar, best, SIT_FORK_DATA, sit_mount_sink, &dctx, &prog);
     if (rc != SIT_OK)
     {
-        Debug_printf("\nStuffIt: extracting '%s' failed: %s", best.path, sit_strerror(rc));
-        sit_close(&ar);
+        Debug_printf("\nStuffIt: extracting '%s' failed: %s", best->path, sit_strerror(rc));
+        sit_close(ar);
         if (hqx_fh != nullptr)
             fclose(hqx_fh);
         if (have_hqx)
             hqx_close(&hqx);
+        sit_mount_free_locals(ar, e, best);
         release();
         return false;
     }
@@ -393,13 +427,13 @@ bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
 
     // Resource fork: best-effort, small cap, kept only for a future NDIF
     // block-map hook - never fatal to the mount if it's missing/too big.
-    if (best.rsrc_len > 0 && best.rsrc_len <= SIT_MOUNT_MAX_RSRC)
+    if (best->rsrc_len > 0 && best->rsrc_len <= SIT_MOUNT_MAX_RSRC)
     {
-        rsrc_buf = (uint8_t *)heap_caps_malloc(best.rsrc_len, MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
+        rsrc_buf = (uint8_t *)heap_caps_malloc(best->rsrc_len, MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
         if (rsrc_buf != nullptr)
         {
-            sit_mount_sink_ctx rctx = { rsrc_buf, best.rsrc_len, 0, SIT_MOUNT_PROGRESS_STEP, "resource fork" };
-            rc = sit_extract(&ar, &best, SIT_FORK_RSRC, sit_mount_sink, &rctx, &prog);
+            sit_mount_sink_ctx rctx = { rsrc_buf, best->rsrc_len, 0, SIT_MOUNT_PROGRESS_STEP, "resource fork" };
+            rc = sit_extract(ar, best, SIT_FORK_RSRC, sit_mount_sink, &rctx, &prog);
             if (rc == SIT_OK)
             {
                 rsrc_len = rctx.pos;
@@ -407,28 +441,33 @@ bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
             else
             {
                 Debug_printf("\nStuffIt: resource fork of '%s' not extracted (%s) - continuing without it",
-                             best.path, sit_strerror(rc));
+                             best->path, sit_strerror(rc));
                 heap_caps_free(rsrc_buf);
                 rsrc_buf = nullptr;
             }
         }
     }
-    else if (best.rsrc_len > SIT_MOUNT_MAX_RSRC)
+    else if (best->rsrc_len > SIT_MOUNT_MAX_RSRC)
     {
         Debug_printf("\nStuffIt: resource fork of '%s' is %u bytes, over the %u byte cap - skipping",
-                     best.path, best.rsrc_len, SIT_MOUNT_MAX_RSRC);
+                     best->path, best->rsrc_len, SIT_MOUNT_MAX_RSRC);
     }
 
-    sit_close(&ar);
+    sit_close(ar);
     if (hqx_fh != nullptr)
         fclose(hqx_fh);
     if (have_hqx)
         hqx_close(&hqx);
 
-    const char *base = strrchr(best.path, '/');
-    base = (base != nullptr) ? base + 1 : best.path;
+    const char *base = strrchr(best->path, '/');
+    base = (base != nullptr) ? base + 1 : best->path;
     strncpy(inner_filename, base, sizeof(inner_filename) - 1);
     inner_filename[sizeof(inner_filename) - 1] = '\0';
+
+    // ar/e/best have served their purpose (the archive is closed and its
+    // best-candidate entry copied out above) - free them now rather than
+    // holding PSRAM through the NDIF decode/classify steps below.
+    sit_mount_free_locals(ar, e, best);
 
 #if defined(SIT_MOUNT_HAVE_NDIF)
     if (rsrc_buf != nullptr && ndif_probe(rsrc_buf, rsrc_len))

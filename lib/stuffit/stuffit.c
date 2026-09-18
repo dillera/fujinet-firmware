@@ -351,9 +351,17 @@ static int sit5_lookup_dir(sit_archive *ar, uint32_t diroffs, const char **outpa
     return SIT_E_FORMAT; /* a child referenced a directory we never saw */
 }
 
+/* namebuf/fullpath (256 bytes each) are heap-allocated below (through
+ * ar->alloc) rather than kept as locals, so this function's stack
+ * frame stays small on a constrained target - TRY is locally
+ * redefined to free them and jump to `cleanup` instead of returning
+ * directly, for every use from the allocation point onward. */
 static int sit5_next_entry(sit_archive *ar, sit_entry *e)
 {
     FILE *f = ar->f;
+    uint8_t *namebuf = NULL;
+    char *fullpath = NULL;
+    int rc = SIT_OK;
 
     for (;;) {
         if (ar->u.sit5.index >= ar->u.sit5.numentries) { ar->done = 1; return 0; }
@@ -413,14 +421,18 @@ static int sit5_next_entry(sit_archive *ar, sit_entry *e)
             if (passlen) TRY(f_skip(f, passlen)); /* encryption key bytes, decryption out of scope */
         }
 
-        uint8_t namebuf[256];
+#undef TRY
+#define TRY(x) do { int _e = (x); if (_e) { rc = _e; goto cleanup; } } while (0)
+
+        namebuf = (uint8_t *)ar->alloc.alloc(256, ar->alloc.ctx);
+        if (!namebuf) { rc = SIT_E_NOMEM; goto cleanup; }
         int nl = namelen > 255 ? 255 : (int)namelen;
-        if (fread(namebuf, 1, (size_t)nl, f) != (size_t)nl) return SIT_E_IO;
+        if (fread(namebuf, 1, (size_t)nl, f) != (size_t)nl) { rc = SIT_E_IO; goto cleanup; }
         if (namelen > 255) TRY(f_skip(f, namelen - 255));
         namebuf[nl] = '\0';
 
         long curpos = ftell(f);
-        if (curpos < 0) return SIT_E_IO;
+        if (curpos < 0) { rc = SIT_E_IO; goto cleanup; }
         if (curpos < headerend) {
             uint16_t commentsize;
             TRY(f_u16(f, &commentsize));
@@ -432,8 +444,8 @@ static int sit5_next_entry(sit_archive *ar, sit_entry *e)
         TRY(f_u16(f, &something));
         TRY(f_skip(f, 2));
         uint8_t filetype[4], filecreator[4];
-        if (fread(filetype, 1, 4, f) != 4) return SIT_E_IO;
-        if (fread(filecreator, 1, 4, f) != 4) return SIT_E_IO;
+        if (fread(filetype, 1, 4, f) != 4) { rc = SIT_E_IO; goto cleanup; }
+        if (fread(filecreator, 1, 4, f) != 4) { rc = SIT_E_IO; goto cleanup; }
         uint16_t finderflags;
         TRY(f_u16(f, &finderflags));
         (void)finderflags;
@@ -458,20 +470,26 @@ static int sit5_next_entry(sit_archive *ar, sit_entry *e)
         }
 
         long datastart = ftell(f);
-        if (datastart < 0) return SIT_E_IO;
+        if (datastart < 0) { rc = SIT_E_IO; goto cleanup; }
 
         const char *parentpath;
         TRY(sit5_lookup_dir(ar, diroffs, &parentpath));
 
-        char fullpath[SIT_MAX_PATH];
-        if (parentpath[0]) snprintf(fullpath, sizeof(fullpath), "%s/%s", parentpath, (const char *)namebuf);
-        else snprintf(fullpath, sizeof(fullpath), "%s", (const char *)namebuf);
+        fullpath = (char *)ar->alloc.alloc(SIT_MAX_PATH, ar->alloc.ctx);
+        if (!fullpath) { rc = SIT_E_NOMEM; goto cleanup; }
+        if (parentpath[0]) snprintf(fullpath, SIT_MAX_PATH, "%s/%s", parentpath, (const char *)namebuf);
+        else snprintf(fullpath, SIT_MAX_PATH, "%s", (const char *)namebuf);
+
+        ar->alloc.free(namebuf, ar->alloc.ctx);
+        namebuf = NULL;
 
         if (isdir) {
-            if (ar->u.sit5.ndirs >= SIT_MAX_DIR_TABLE) return SIT_E_LIMIT;
+            if (ar->u.sit5.ndirs >= SIT_MAX_DIR_TABLE) { rc = SIT_E_LIMIT; goto cleanup; }
             sit_dir_table_entry *d = &ar->u.sit5.dirs[ar->u.sit5.ndirs++];
             d->offset = entryoff;
             snprintf(d->path, sizeof(d->path), "%s", fullpath);
+            ar->alloc.free(fullpath, ar->alloc.ctx);
+            fullpath = NULL;
 
             ar->u.sit5.numentries += childnum;
             ar->u.sit5.index++;
@@ -489,6 +507,8 @@ static int sit5_next_entry(sit_archive *ar, sit_entry *e)
          * hid resource-fork-only entries completely. */
         memset(e, 0, sizeof(*e));
         snprintf(e->path, sizeof(e->path), "%s", fullpath);
+        ar->alloc.free(fullpath, ar->alloc.ctx);
+        fullpath = NULL;
         memcpy(e->type, filetype, 4); e->type[4] = '\0';
         memcpy(e->creator, filecreator, 4); e->creator[4] = '\0';
         e->data_method = (uint8_t)(datamethod & 0x0f);
@@ -509,7 +529,14 @@ static int sit5_next_entry(sit_archive *ar, sit_entry *e)
         ar->nextpos = next;
         return 1;
     }
+
+cleanup:
+    if (namebuf) ar->alloc.free(namebuf, ar->alloc.ctx);
+    if (fullpath) ar->alloc.free(fullpath, ar->alloc.ctx);
+    return rc;
 }
+#undef TRY
+#define TRY(x) do { int _e = (x); if (_e) return _e; } while (0)
 
 /* ------------------------------------------------------------------- */
 /* public entry walk / extraction / close                               */
@@ -547,22 +574,31 @@ static int crc_wrap_sink(const uint8_t *buf, size_t n, void *ctx)
     return c->user_sink(buf, n, c->user_ctx);
 }
 
-static int extract_stored(sit_io *io, uint32_t outlen, sit_sink_fn sink, void *ctx)
+#define SIT_EXTRACT_STORED_BUFSIZE 1024
+
+static int extract_stored(sit_io *io, uint32_t outlen, sit_sink_fn sink, void *ctx,
+                           const sit_allocator *alloc)
 {
-    uint8_t buf[1024];
+    uint8_t *buf = (uint8_t *)alloc->alloc(SIT_EXTRACT_STORED_BUFSIZE, alloc->ctx);
+    if (!buf) return SIT_E_NOMEM;
+
+    int rc = SIT_OK;
     uint32_t remain = outlen;
     while (remain > 0) {
-        size_t want = remain < sizeof(buf) ? remain : sizeof(buf);
+        size_t want = remain < SIT_EXTRACT_STORED_BUFSIZE ? remain : SIT_EXTRACT_STORED_BUFSIZE;
         size_t got = 0;
         while (got < want) {
             int c = sit_io_getbyte(io);
-            if (c < 0) return SIT_E_IO;
+            if (c < 0) { rc = SIT_E_IO; goto done; }
             buf[got++] = (uint8_t)c;
         }
-        if (sink(buf, got, ctx)) return SIT_E_IO;
+        if (sink(buf, got, ctx)) { rc = SIT_E_IO; goto done; }
         remain -= (uint32_t)got;
     }
-    return SIT_OK;
+
+done:
+    alloc->free(buf, alloc->ctx);
+    return rc;
 }
 
 int sit_extract(sit_archive *ar, const sit_entry *e, sit_fork which,
@@ -600,21 +636,27 @@ int sit_extract(sit_archive *ar, const sit_entry *e, sit_fork which,
      * header unconditionally, which a genuinely empty fork never has). */
     if (len == 0 && comp_len == 0) return SIT_OK;
 
-    sit_io io;
-    sit_io_init(&io, ar->f, offset, (long)comp_len);
+    /* sit_io carries a 4KB internal read-ahead buffer (SIT_IO_BUFSIZE) -
+     * heap-allocated here (via the caller-supplied allocator) rather
+     * than kept as a local, so it doesn't sit on a constrained target's
+     * call stack for the whole extraction. */
+    sit_io *io = (sit_io *)ar->alloc.alloc(sizeof(sit_io), ar->alloc.ctx);
+    if (!io) return SIT_E_NOMEM;
+    sit_io_init(io, ar->f, offset, (long)comp_len);
 
     crc_wrap_ctx wrap = { sink, ctx, 0, prog };
     int rc;
 
     switch (method) {
-        case 0:  rc = extract_stored(&io, len, crc_wrap_sink, &wrap); break;
-        case 1:  rc = sit_rle90_decompress(&io, len, crc_wrap_sink, &wrap, &ar->alloc); break;
-        case 2:  rc = sit_lzw_decompress(&io, len, crc_wrap_sink, &wrap, &ar->alloc); break;
-        case 3:  rc = sit_huffman_decompress(&io, len, crc_wrap_sink, &wrap, &ar->alloc); break;
-        case 13: rc = sit_lzh13_decompress(&io, len, crc_wrap_sink, &wrap, &ar->alloc); break;
-        case 15: rc = sit_arsenic_decompress(&io, len, crc_wrap_sink, &wrap, &ar->alloc, prog); break;
-        default: return SIT_E_UNSUPPORTED;
+        case 0:  rc = extract_stored(io, len, crc_wrap_sink, &wrap, &ar->alloc); break;
+        case 1:  rc = sit_rle90_decompress(io, len, crc_wrap_sink, &wrap, &ar->alloc); break;
+        case 2:  rc = sit_lzw_decompress(io, len, crc_wrap_sink, &wrap, &ar->alloc); break;
+        case 3:  rc = sit_huffman_decompress(io, len, crc_wrap_sink, &wrap, &ar->alloc); break;
+        case 13: rc = sit_lzh13_decompress(io, len, crc_wrap_sink, &wrap, &ar->alloc); break;
+        case 15: rc = sit_arsenic_decompress(io, len, crc_wrap_sink, &wrap, &ar->alloc, prog); break;
+        default: ar->alloc.free(io, ar->alloc.ctx); return SIT_E_UNSUPPORTED;
     }
+    ar->alloc.free(io, ar->alloc.ctx);
     if (rc) return rc;
 
     /* Method 15's stored CRC field is stale/meaningless in the reference

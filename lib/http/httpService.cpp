@@ -2481,7 +2481,12 @@ httpd_handle_t fnHttpService::start_server(serverstate &state)
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.task_priority = 12; // Bump this higher than fnService loop
     config.core_id = 0; // Pin to CPU core 0
+#ifdef BUILD_MAC
+    // mounting a StuffIt archive unstuffs it inside this task
+    config.stack_size = 24576;
+#else
     config.stack_size = 12288;
+#endif
     // Budget: 35 routes registered here + 11 WebDAV = 46 handlers
     config.max_uri_handlers = 64;
     config.max_resp_headers = 16;
