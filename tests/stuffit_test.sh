@@ -3,28 +3,43 @@
 # stuffit_test.sh - byte-identical comparison of lib/stuffit/ extraction
 # against unar (The Unarchiver CLI) for every sample archive, both forks.
 #
-# For each archive in $SIT_SAMPLES_DIR (defaults to
+# For each archive found by recursively scanning $SAMPLES_DIR (defaults to
 # ~/code/FujiNet_macOS_2026/sit_samples, override with an env var or the
-# first argument so this keeps working if the samples move - and so any
-# new sample dropped in there is picked up automatically), this:
-#   1. runs `unsit -a` into a temp directory. Every entry's data fork is
-#      extracted as "<path>"; an entry that also has a resource fork
-#      additionally gets "<path>.rsrc" - a testing/inspection sidecar
-#      convention unsit -a documents, not a real file format (see
-#      tests/unsit.c's do_extract_all()).
-#   2. runs `unar -D -f -q -o <dir>` (unar's default fork mode, "fork" -
+# first argument - this picks up both the flat legacy samples and anything
+# under sit_samples/corpus/), this:
+#   1. classifies the archive using `lsar -j` (format name + per-entry
+#      compression method names, e.g. "StuffIt" / "StuffIt 5" / "StuffIt in
+#      BinHex" / "StuffIt SEA", and "LZ+Huffman" / "RLE" / "Arsenic" / ...).
+#   2. probes whether unsit can even *open* the archive (`unsit -l`). A
+#      file whose real StuffIt/BinHex magic isn't at offset 0 - a .sea
+#      self-extracting wrapper (executable prefix) or a .bin MacBinary
+#      wrapper - is reported as UNSUPPORTED (with the byte offset the real
+#      magic was actually found at, if any) and skipped rather than
+#      failing the whole run; lib/stuffit's sit_open()/hqx_open() only
+#      look at the current file position, by design (see stuffit.c), so
+#      this is diagnostic output for the format owner, not a bug in this
+#      test script.
+#   3. for archives unsit can open, runs `unsit -a` into a temp directory.
+#      Every entry's data fork is extracted as "<path>"; an entry that
+#      also has a resource fork additionally gets "<path>.rsrc" - a
+#      testing/inspection sidecar convention unsit -a documents, not a
+#      real file format (see tests/unsit.c's do_extract_all()).
+#   4. runs `unar -D -f -q -o <dir>` (unar's default fork mode, "fork" -
 #      real HFS+ resource forks via the com.apple.ResourceFork xattr on
 #      the extracted data-fork file) into a second temp directory. unar
 #      handles a .hqx (BinHex) input exactly the same as a bare .sit -
 #      no special-casing needed here for that, only in unsit itself.
-#   3. compares every non-".rsrc", non-zero-length file unsit produced
+#   5. compares every non-".rsrc", non-zero-length file unsit produced
 #      against unar's copy of the same relative path, byte for byte.
-#   4. for every ".rsrc" sidecar unsit produced, compares it against the
+#   6. for every ".rsrc" sidecar unsit produced, compares it against the
 #      com.apple.ResourceFork xattr unar attached to its counterpart
 #      data-fork file, byte for byte (via `xattr -px` + `xxd -r -p`,
 #      empirically confirmed on this machine to hold the same raw
 #      resource-fork bytes `-xr` produces - see below for the `-k
 #      visible` alternative that was tried first and rejected).
+#   7. prints a per-archive summary line (format, methods, pass/fail/
+#      unsupported) and, at the end, a coverage table broken down by
+#      (archive format, compression method).
 #
 # Why xattr and not `-k visible`: unar's `-k visible` mode writes
 # AppleDouble-format ".rsrc" sidecar files, which start with a fixed
@@ -45,6 +60,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SAMPLES_DIR="${1:-${SIT_SAMPLES_DIR:-$HOME/code/FujiNet_macOS_2026/sit_samples}}"
 UNSIT="${UNSIT_BIN:-$SCRIPT_DIR/../build_stuffit_test_only/unsit}"
 UNAR="${UNAR_BIN:-/opt/homebrew/bin/unar}"
+LSAR="${LSAR_BIN:-/opt/homebrew/bin/lsar}"
+JQ="${JQ_BIN:-/opt/homebrew/bin/jq}"
 
 if [ ! -x "$UNSIT" ]; then
     # Fall back to searching common build output locations.
@@ -65,14 +82,33 @@ if [ ! -x "$UNAR" ]; then
     exit 1
 fi
 
+command -v "$LSAR" >/dev/null 2>&1 || LSAR="$(command -v lsar || true)"
+command -v "$JQ" >/dev/null 2>&1 || JQ="$(command -v jq || true)"
+if [ -z "$LSAR" ] || [ ! -x "$LSAR" ]; then
+    echo "stuffit_test.sh: lsar not found (install The Unarchiver CLI, or set LSAR_BIN)." >&2
+    exit 1
+fi
+if [ -z "$JQ" ] || [ ! -x "$JQ" ]; then
+    echo "stuffit_test.sh: jq not found (needed to parse 'lsar -j' output; set JQ_BIN or install jq)." >&2
+    exit 1
+fi
+
 if [ ! -d "$SAMPLES_DIR" ]; then
     echo "stuffit_test.sh: samples directory not found: $SAMPLES_DIR" >&2
     exit 1
 fi
 
-shopt -s nullglob
-samples=("$SAMPLES_DIR"/*)
-shopt -u nullglob
+# Recurse into $SAMPLES_DIR (this picks up both loose top-level samples and
+# anything under a corpus/ subdirectory), skipping obvious non-archive
+# bookkeeping files (manifest, docs, Finder metadata).
+samples=()
+while IFS= read -r -d '' f; do
+    bn="$(basename "$f")"
+    case "$bn" in
+        .DS_Store|*.txt|*.md) continue ;;
+    esac
+    samples+=("$f")
+done < <(find "$SAMPLES_DIR" -type f -print0)
 
 if [ ${#samples[@]} -eq 0 ]; then
     echo "stuffit_test.sh: no sample archives found in $SAMPLES_DIR" >&2
@@ -123,20 +159,88 @@ find_unar_counterpart() {
     return 1
 }
 
+# Byte offset within the first 64KiB that the real StuffIt magic
+# ("SIT!"/"STin"/"STi\d"/"ST\d\d" + "rLau" at +10, or the StuffIt 5
+# "StuffIt (c)1997-" banner) is found at - used only for diagnosing an
+# UNSUPPORTED wrapper (.sea executable prefix, .bin MacBinary header).
+# Purely a textual grep, so it can false-positive on coincidental bytes
+# for the 4-byte classic prefixes, but "StuffIt (c)1997-" is unambiguous
+# and the classic case also cross-checks "rLau" 10 bytes later.
+find_magic_offset() {
+    local file="$1"
+    local hit
+    hit="$(head -c 65536 "$file" 2>/dev/null | grep -abo 'StuffIt (c)1997-' | head -1)"
+    if [ -n "$hit" ]; then
+        printf 'StuffIt5 banner at offset %s\n' "${hit%%:*}"
+        return 0
+    fi
+    local off
+    for off in $(head -c 65536 "$file" 2>/dev/null | grep -abo -e 'SIT!' -e 'STin' | cut -d: -f1); do
+        local tag
+        tag="$(dd if="$file" bs=1 skip=$((off + 10)) count=4 2>/dev/null)"
+        if [ "$tag" = "rLau" ]; then
+            printf 'classic SIT! magic at offset %s\n' "$off"
+            return 0
+        fi
+    done
+    printf 'no StuffIt magic found in first 65536 bytes\n'
+    return 1
+}
+
+# Coverage table bookkeeping: keyed by "format<TAB>method" -> counts.
+declare -A cov_total cov_pass cov_fail cov_unsupported
+
+record_coverage() {
+    local fmt="$1" method="$2" status="$3" # status: pass|fail|unsupported
+    local key="${fmt}"$'\t'"${method}"
+    cov_total["$key"]=$(( ${cov_total["$key"]:-0} + 1 ))
+    case "$status" in
+        pass)        cov_pass["$key"]=$(( ${cov_pass["$key"]:-0} + 1 )) ;;
+        fail)        cov_fail["$key"]=$(( ${cov_fail["$key"]:-0} + 1 )) ;;
+        unsupported) cov_unsupported["$key"]=$(( ${cov_unsupported["$key"]:-0} + 1 )) ;;
+    esac
+}
+
 total_files_compared=0
 total_rsrc_compared=0
 total_archives=0
+total_unsupported=0
 failures=0
 
 for archive in "${samples[@]}"; do
     [ -f "$archive" ] || continue
-    base="$(basename "$archive")"
+    rel_disp="${archive#"$SAMPLES_DIR"/}"
     total_archives=$((total_archives + 1))
+
+    # --- classify with lsar -j: archive format name + distinct per-entry
+    #     compression method names ---
+    lsar_json="$("$LSAR" -j "$archive" 2>/dev/null)"
+    fmt="unknown"
+    methods="(none)"
+    if [ -n "$lsar_json" ] && echo "$lsar_json" | "$JQ" -e . >/dev/null 2>&1; then
+        fmt="$(echo "$lsar_json" | "$JQ" -r '.lsarFormatName // "unknown"')"
+        m="$(echo "$lsar_json" | "$JQ" -r '[.lsarContents[]? | select(.XADIsDirectory != true) | (.XADCompressionName // "unknown")] | unique | join(",")' 2>/dev/null)"
+        [ -n "$m" ] && methods="$m"
+    fi
+
+    echo "== $rel_disp == [$fmt] methods: $methods"
+
+    # --- can unsit even open this archive? ---
+    open_err="$("$UNSIT" -l "$archive" 2>&1 >/dev/null)"
+    open_rc=$?
+    if [ $open_rc -ne 0 ] && printf '%s' "$open_err" | grep -q "open failed"; then
+        diag="$(find_magic_offset "$archive")"
+        echo "  UNSUPPORTED: unsit cannot open this archive ($open_err) - $diag"
+        total_unsupported=$((total_unsupported + 1))
+        IFS=',' read -r -a marr <<< "$methods"
+        for meth in "${marr[@]}"; do
+            record_coverage "$fmt" "$meth" unsupported
+        done
+        continue
+    fi
 
     unsit_dir="$(mktemp -d "${TMPDIR:-/tmp}/stuffit_test_unsit.XXXXXX")"
     unar_dir="$(mktemp -d "${TMPDIR:-/tmp}/stuffit_test_unar.XXXXXX")"
-
-    echo "== $base =="
 
     if ! "$UNSIT" -a "$archive" "$unsit_dir" >"$unsit_dir.log" 2>&1; then
         echo "  unsit -a exited nonzero (see $unsit_dir.log) - continuing, some entries may still have extracted"
@@ -145,6 +249,10 @@ for archive in "${samples[@]}"; do
     if ! "$UNAR" -D -f -q -o "$unar_dir" "$archive" >"$unar_dir.log" 2>&1; then
         echo "  FAIL: unar could not extract $archive (see $unar_dir.log)" >&2
         failures=$((failures + 1))
+        IFS=',' read -r -a marr <<< "$methods"
+        for meth in "${marr[@]}"; do
+            record_coverage "$fmt" "$meth" fail
+        done
         rm -rf "$unsit_dir" "$unar_dir" "$unsit_dir.log" "$unar_dir.log"
         continue
     fi
@@ -205,16 +313,35 @@ for archive in "${samples[@]}"; do
         archive_rsrc=$((archive_rsrc + 1))
     done < <(find "$unsit_dir" -type f -name '*.rsrc' -print0)
 
-    echo "  compared $archive_files data fork(s), $archive_rsrc resource fork(s), $archive_failures mismatch(es)"
+    status="pass"
+    [ "$archive_failures" -gt 0 ] && status="fail"
+
+    echo "  compared $archive_files data fork(s), $archive_rsrc resource fork(s), $archive_failures mismatch(es) -> $(echo "$status" | tr '[:lower:]' '[:upper:]')"
     total_files_compared=$((total_files_compared + archive_files))
     total_rsrc_compared=$((total_rsrc_compared + archive_rsrc))
     failures=$((failures + archive_failures))
+
+    IFS=',' read -r -a marr <<< "$methods"
+    for meth in "${marr[@]}"; do
+        record_coverage "$fmt" "$meth" "$status"
+    done
 
     rm -rf "$unsit_dir" "$unar_dir" "$unsit_dir.log" "$unar_dir.log"
 done
 
 echo
-echo "stuffit_test.sh summary: $total_archives archive(s), $total_files_compared data fork(s) and $total_rsrc_compared resource fork(s) compared, $failures failure(s)"
+echo "=== coverage table (by archive format / compression method) ==="
+printf '%-20s %-16s %6s %6s %6s %6s\n' "format" "method" "total" "pass" "fail" "unsup"
+for key in "${!cov_total[@]}"; do
+    printf '%s\n' "$key"
+done | sort -u | while IFS=$'\t' read -r fmt meth; do
+    key="${fmt}"$'\t'"${meth}"
+    printf '%-20s %-16s %6s %6s %6s %6s\n' "$fmt" "$meth" \
+        "${cov_total[$key]:-0}" "${cov_pass[$key]:-0}" "${cov_fail[$key]:-0}" "${cov_unsupported[$key]:-0}"
+done
+
+echo
+echo "stuffit_test.sh summary: $total_archives archive(s), $total_unsupported unsupported (skipped), $total_files_compared data fork(s) and $total_rsrc_compared resource fork(s) compared, $failures failure(s)"
 
 if [ "$failures" -ne 0 ]; then
     echo "stuffit_test.sh: FAILED" >&2

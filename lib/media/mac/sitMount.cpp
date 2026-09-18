@@ -481,6 +481,12 @@ bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
     }
     image_len = dctx.pos;
 
+    // For the web UI slot line (see macFloppy::sit_archive_kind() etc.):
+    // "BinHex + StuffIt" takes priority over the plain archive format
+    // name when both wrapped this file.
+    archive_kind = have_hqx ? "BinHex + StuffIt" : sit_format_name(sit_get_format(ar));
+    method_name = sit_method_name(best->data_method);
+    // (recorded before sit_close() and the entry buffers go away)
     sit_close(ar);
     if (hqx_fh != nullptr)
         fclose(hqx_fh);
@@ -492,11 +498,6 @@ bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
     strncpy(inner_filename, base, sizeof(inner_filename) - 1);
     inner_filename[sizeof(inner_filename) - 1] = '\0';
 
-    // For the web UI slot line (see macFloppy::sit_archive_kind() etc.):
-    // "BinHex + StuffIt" takes priority over the plain archive format
-    // name when both wrapped this file.
-    archive_kind = have_hqx ? "BinHex + StuffIt" : sit_format_name(sit_get_format(ar));
-    method_name = sit_method_name(best->data_method);
 
     // ar/e/best have served their purpose (the archive is closed and its
     // best-candidate entry copied out above) - free them now rather than
