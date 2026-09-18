@@ -247,6 +247,21 @@ int sit_open(sit_archive *ar, FILE *f, const sit_allocator *a)
     if (looks_like_classic(probe, got)) return open_classic(ar, base);
     if (looks_like_sit5(probe, got)) return open_sit5(ar, base);
 
+    /* MacBinary wrapper (.bin, downloaded .sea): a 128-byte header with a
+     * zero at 0, a 1..63 byte name length at 1 and zeros at 74 and 82, then
+     * the data fork, i.e. the archive, at offset 128. */
+    if (got >= 22 && probe[0] == 0 && probe[1] >= 1 && probe[1] <= 63) {
+        uint8_t mb[128];
+        if (fread(mb, 1, sizeof(mb), f) == sizeof(mb) && mb[74] == 0 && mb[82] == 0) {
+            long inner = base + 128;
+            got = fread(probe, 1, sizeof(probe), f);
+            if (fseek(f, inner, SEEK_SET) != 0) return SIT_E_IO;
+            if (looks_like_classic(probe, got)) return open_classic(ar, inner);
+            if (looks_like_sit5(probe, got)) return open_sit5(ar, inner);
+        }
+        if (fseek(f, base, SEEK_SET) != 0) return SIT_E_IO;
+    }
+
     return SIT_E_FORMAT;
 }
 

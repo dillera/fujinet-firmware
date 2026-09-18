@@ -8,6 +8,13 @@ slot line and serves the raw image at `/sitdownload?deviceslot=N`
 (verified byte-identical to ndif2raw). Booted from MacSpeak in slot 5,
 the volume appears on the desktop.
 
+Corpus test (2026-09-18): `tests/stuffit_test.sh` over 44 real archives
+(1988 StuffIt 1.5 through StuffIt 5, sources in `tests/corpus_manifest.txt`,
+files in `~/code/FujiNet_macOS_2026/sit_samples/corpus/`): every data and
+resource fork (439) byte-identical to `unar` for RLE, LZW, Huffman,
+LZ+Huffman, Arsenic and stored entries, in plain, BinHex and MacBinary
+wrapped archives. Not found in the wild: LZAH (5), method 14, encrypted.
+
 Practical notes:
 * Mount the archive **before** the floppy: Arsenic needs 2.6 MB of PSRAM
   scratch, NDIF decoding briefly holds the compressed fork and the raw
