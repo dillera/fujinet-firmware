@@ -259,3 +259,52 @@ add_executable(mac_gcr_tests
 )
 target_include_directories(mac_gcr_tests PRIVATE ${CMAKE_SOURCE_DIR}/lib/)
 add_test(NAME mac_gcr_tests COMMAND mac_gcr_tests)
+
+# ------------------------------------------------------------------------------
+# StuffIt archive reader/decompressor (lib/stuffit/, pure C99, host-testable -
+# see docs/mac68k-stuffit-plan.md Phase 0). Parses both the classic "SIT!"
+# format and the StuffIt 5 format and decompresses DATA fork content for
+# methods 0/1/2/3/13/15.
+#
+# `unsit` is the host CLI (list / extract one / extract all) built on top of
+# the library; `stuffit_sample_tests` builds it and then shells out to
+# stuffit_test.sh, which compares every extracted data fork byte-for-byte
+# against `unar` (The Unarchiver CLI) for every archive dropped into
+# ~/code/FujiNet_macOS_2026/sit_samples/. That directory and `unar` are only
+# available on dev machines set up for this work, not in every CI
+# environment, so the sample-comparison test is skipped (not failed) when
+# either is missing.
+# ------------------------------------------------------------------------------
+add_executable(unsit
+    unsit.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/stuffit.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_io.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_crc16.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_rle90.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_lzw.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_prefixcode.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_huffman.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_lzh13.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_bwt.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_arsenic.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/binhex.c
+)
+target_include_directories(unsit PRIVATE ${CMAKE_SOURCE_DIR}/lib/)
+
+find_program(UNAR_EXECUTABLE unar PATHS /opt/homebrew/bin /usr/local/bin /usr/bin)
+if(NOT DEFINED SIT_SAMPLES_DIR)
+  set(SIT_SAMPLES_DIR "$ENV{HOME}/code/FujiNet_macOS_2026/sit_samples")
+endif()
+
+if(UNAR_EXECUTABLE AND EXISTS "${SIT_SAMPLES_DIR}")
+  add_test(NAME stuffit_sample_tests
+    COMMAND ${CMAKE_COMMAND} -E env
+      "UNSIT_BIN=$<TARGET_FILE:unsit>"
+      "UNAR_BIN=${UNAR_EXECUTABLE}"
+      "SIT_SAMPLES_DIR=${SIT_SAMPLES_DIR}"
+      bash ${CMAKE_CURRENT_SOURCE_DIR}/stuffit_test.sh
+  )
+  set_tests_properties(stuffit_sample_tests PROPERTIES DEPENDS unsit)
+else()
+  message(STATUS "unar and/or ${SIT_SAMPLES_DIR} not found - skipping stuffit_sample_tests")
+endif()
