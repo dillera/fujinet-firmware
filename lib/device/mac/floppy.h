@@ -62,6 +62,14 @@ protected:
     bool _wcap_overflow = false;
     void reload_track_buffers();
 
+    // True only once this (floppy-slot) object has actually told the Pico
+    // a disk is in the drive ('s'/'d' written in mount()'s success path).
+    // unmount() sends 'r' iff this is set, so a mount attempt that never
+    // got that far - wrong slot for the image, extraction failed, no
+    // PSRAM, etc. - never claims a disk was removed that was never
+    // inserted. Cleared right after unmount() sends 'r'.
+    bool _disk_inserted = false;
+
     bool is_dcd_slot() { return disk_num >= '0' && disk_num < '0' + MAC_DCD_SLOTS; }
     bool is_floppy_slot() { return disk_num == '0' + MAC_FLOPPY_SLOT; }
 
@@ -94,6 +102,9 @@ public:
     const char *sit_inner_filename() { return (_sit != nullptr) ? _sit->inner_filename : ""; }
     uint32_t sit_image_len() { return (_sit != nullptr) ? _sit->image_len : 0; }
     const uint8_t *sit_image_data() { return (_sit != nullptr) ? _sit->image_buf : nullptr; }
+    const char *sit_archive_kind() { return (_sit != nullptr) ? _sit->archive_kind : ""; }
+    const char *sit_method_name() { return (_sit != nullptr) ? _sit->method_name : ""; }
+    bool sit_was_ndif() { return (_sit != nullptr) && _sit->was_ndif; }
 
     void shutdown() override {};
     void process(mac_cmd_t cmd) override;

@@ -68,6 +68,13 @@ public:
     sit_image_kind_t kind = SIT_IMAGE_UNKNOWN;
     mediatype_t disk_type = MEDIATYPE_UNKNOWN; // MEDIATYPE_DC42 or MEDIATYPE_DSK, matching kind
 
+    // Filled in by extract(), for the web UI slot line only - see
+    // macFloppy::sit_archive_kind()/sit_method_name()/sit_was_ndif() in
+    // lib/device/mac/floppy.h.
+    const char *archive_kind = "";  // sit_format_name(), or "BinHex + StuffIt" if .hqx-wrapped
+    const char *method_name = "";   // sit_method_name() for the chosen entry's data fork
+    bool was_ndif = false;          // true if image_buf was NDIF-decoded (image_len is the decoded size)
+
 private:
     uint8_t *rsrc_buf = nullptr;           // resource fork, capped small; for a future NDIF hook
     uint32_t rsrc_len = 0;

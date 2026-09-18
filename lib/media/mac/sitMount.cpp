@@ -106,6 +106,9 @@ void SitMount::release()
     inner_filename[0] = '\0';
     kind = SIT_IMAGE_UNKNOWN;
     disk_type = MEDIATYPE_UNKNOWN;
+    archive_kind = "";
+    method_name = "";
+    was_ndif = false;
 }
 
 bool SitMount::classify()
@@ -160,14 +163,21 @@ bool SitMount::classify()
 #if defined(SIT_MOUNT_HAVE_NDIF)
 // Decodes an NDIF (Disk Copy 6) image in place: *image_buf currently holds
 // the archive entry's raw data fork (the still chunk-compressed NDIF
-// stream); rsrc_buf/rsrc_len hold its resource fork (the 'bcem' block map
-// lives in there). On success, *image_buf/*image_len are replaced with a
-// freshly allocated, fully decoded raw image (block_count * 512 bytes);
-// the original compressed buffer is freed. On failure, *image_buf is left
-// untouched and the caller should treat this as a normal classify()
-// failure.
+// stream); *rsrc_buf/*rsrc_len hold its resource fork (the 'bcem' block
+// map lives in there). On success, *image_buf/*image_len are replaced
+// with a freshly allocated, fully decoded raw image (block_count * 512
+// bytes); the original compressed buffer is freed. On failure, *image_buf
+// is left untouched and the caller should treat this as a normal
+// classify() failure.
+//
+// *rsrc_buf is freed (and *rsrc_buf/*rsrc_len zeroed) as soon as
+// ndif_open() returns, success or not - ndif_open() is the only NDIF call
+// that reads the resource fork (it parses 'bcem' into its own chunk
+// table up front; ndif_extract() never touches rsrc), so holding it any
+// longer just adds dead weight to the peak PSRAM used while the
+// compressed and decoded image buffers are both live.
 static bool sit_mount_decode_ndif(uint8_t **image_buf, uint32_t *image_len,
-                                   const uint8_t *rsrc_buf, size_t rsrc_len,
+                                   uint8_t **rsrc_buf, uint32_t *rsrc_len,
                                    const char *inner_filename)
 {
     // ndif_open() reads the (still compressed) data fork through a FILE*,
@@ -181,7 +191,15 @@ static bool sit_mount_decode_ndif(uint8_t **image_buf, uint32_t *image_len,
     }
 
     ndif_image nd;
-    int nrc = ndif_open(&nd, ndif_data_fh, rsrc_buf, rsrc_len, &sit_mount_allocator);
+    int nrc = ndif_open(&nd, ndif_data_fh, *rsrc_buf, *rsrc_len, &sit_mount_allocator);
+
+    // Done with the resource fork either way - free it now, before the
+    // decoded-image allocation below, rather than leaving it for the
+    // caller to free after this whole call returns.
+    heap_caps_free(*rsrc_buf);
+    *rsrc_buf = nullptr;
+    *rsrc_len = 0;
+
     if (nrc != NDIF_OK)
     {
         Debug_printf("\nStuffIt: NDIF decode of '%s' failed to open: %s", inner_filename, ndif_strerror(nrc));
@@ -250,6 +268,9 @@ static void sit_mount_free_locals(sit_archive *ar, sit_entry *e, sit_entry *best
 bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
 {
     release();
+
+    Debug_printf("\nStuffIt: extract('%s') start, %u bytes free PSRAM",
+                 archive_filename, (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 
     sit_archive *ar = (sit_archive *)sit_mount_allocator.alloc(sizeof(sit_archive), sit_mount_allocator.ctx);
     sit_entry *e = (sit_entry *)sit_mount_allocator.alloc(sizeof(sit_entry), sit_mount_allocator.ctx);
@@ -436,6 +457,9 @@ bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
         if (have_hqx)
             hqx_close(&hqx);
         sit_mount_free_locals(ar, e, best);
+        release(); // frees rsrc_buf, extracted above and otherwise leaked on this path
+        Debug_printf("\nStuffIt: extract('%s') end (no PSRAM for image), %u bytes free PSRAM",
+                     archive_filename, (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
         return false;
     }
 
@@ -451,6 +475,8 @@ bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
             hqx_close(&hqx);
         sit_mount_free_locals(ar, e, best);
         release();
+        Debug_printf("\nStuffIt: extract('%s') end (data fork extract failed), %u bytes free PSRAM",
+                     archive_filename, (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
         return false;
     }
     image_len = dctx.pos;
@@ -466,6 +492,12 @@ bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
     strncpy(inner_filename, base, sizeof(inner_filename) - 1);
     inner_filename[sizeof(inner_filename) - 1] = '\0';
 
+    // For the web UI slot line (see macFloppy::sit_archive_kind() etc.):
+    // "BinHex + StuffIt" takes priority over the plain archive format
+    // name when both wrapped this file.
+    archive_kind = have_hqx ? "BinHex + StuffIt" : sit_format_name(sit_get_format(ar));
+    method_name = sit_method_name(best->data_method);
+
     // ar/e/best have served their purpose (the archive is closed and its
     // best-candidate entry copied out above) - free them now rather than
     // holding PSRAM through the NDIF decode/classify steps below.
@@ -474,15 +506,21 @@ bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
 #if defined(SIT_MOUNT_HAVE_NDIF)
     if (rsrc_buf != nullptr && ndif_probe(rsrc_buf, rsrc_len))
     {
-        Debug_printf("\nStuffIt: '%s' is an NDIF (Disk Copy 6) image - decoding", inner_filename);
-        if (!sit_mount_decode_ndif(&image_buf, &image_len, rsrc_buf, rsrc_len, inner_filename))
+        Debug_printf("\nStuffIt: '%s' is an NDIF (Disk Copy 6) image - decoding, %u bytes free PSRAM",
+                     inner_filename, (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+        if (!sit_mount_decode_ndif(&image_buf, &image_len, &rsrc_buf, &rsrc_len, inner_filename))
         {
             release();
+            Debug_printf("\nStuffIt: extract('%s') end (NDIF decode failed), %u bytes free PSRAM",
+                         archive_filename, (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
             return false;
         }
+        was_ndif = true;
     }
     // A real ndif_probe() has now definitively ruled NDIF in or out;
-    // nothing past this point needs the resource fork either way.
+    // nothing past this point needs the resource fork either way. (Already
+    // freed inside sit_mount_decode_ndif() when that ran - this only fires
+    // when the image above turned out not to be NDIF.)
     if (rsrc_buf != nullptr)
     {
         heap_caps_free(rsrc_buf);
@@ -497,6 +535,8 @@ bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
                      "not 400K/800K, not HFS, not a drive image",
                      inner_filename, image_len, archive_filename);
         release();
+        Debug_printf("\nStuffIt: extract('%s') end (classify failed), %u bytes free PSRAM",
+                     archive_filename, (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
         return false;
     }
 
@@ -505,9 +545,13 @@ bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
     {
         Debug_printf("\nStuffIt: fmemopen() failed for extracted image '%s'", inner_filename);
         release();
+        Debug_printf("\nStuffIt: extract('%s') end (fmemopen failed), %u bytes free PSRAM",
+                     archive_filename, (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
         return false;
     }
 
+    Debug_printf("\nStuffIt: extract('%s') end (ok), %u bytes free PSRAM",
+                 archive_filename, (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     return true;
 }
 

@@ -44,6 +44,33 @@ const char *sit_strerror(int code)
     }
 }
 
+const char *sit_method_name(uint8_t method)
+{
+    switch (method) {
+        case 0:  return "None";
+        case 1:  return "RLE";
+        case 2:  return "LZW";
+        case 3:  return "Huffman";
+        case 13: return "LZ+Huffman";
+        case 15: return "Arsenic";
+        default: return "?";
+    }
+}
+
+const char *sit_format_name(sit_format fmt)
+{
+    switch (fmt) {
+        case SIT_FMT_CLASSIC: return "SIT!";
+        case SIT_FMT_SIT5:    return "StuffIt 5";
+        default:              return "?";
+    }
+}
+
+sit_format sit_get_format(const sit_archive *ar)
+{
+    return (ar != NULL) ? ar->format : SIT_FMT_UNKNOWN;
+}
+
 /* ------------------------------------------------------------------- */
 /* small big-endian FILE* readers - used only for header/metadata       */
 /* parsing (not fork decompression, which always goes through sit_io). */

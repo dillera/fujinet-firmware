@@ -46,6 +46,10 @@ enum {
 
 const char *sit_strerror(int code);
 
+/* Human-readable name for a data/resource fork compression method code
+ * (0/1/2/3/13/15, see sit_extract()'s dispatch); "?" for anything else. */
+const char *sit_method_name(uint8_t method);
+
 /* ------------------------------------------------------------------- */
 /* Allocator                                                            */
 /* ------------------------------------------------------------------- */
@@ -135,6 +139,9 @@ typedef enum {
     SIT_FMT_SIT5    = 2
 } sit_format;
 
+/* Human-readable name for a sit_format value ("StuffIt 5", "SIT!", "?"). */
+const char *sit_format_name(sit_format fmt);
+
 /* classic format: a simple folder-name stack, pushed/popped as
  * StuffItStartFolder/StuffItEndFolder markers are consumed. */
 typedef struct {
@@ -212,6 +219,11 @@ int sit_extract(sit_archive *ar, const sit_entry *e, sit_fork which,
                  sit_sink_fn sink, void *ctx, sit_progress *prog);
 
 void sit_close(sit_archive *ar);
+
+/* Which archive format sit_open() recognized (classic "SIT!" or
+ * StuffIt 5); for callers (e.g. the web UI) that want to report it
+ * without reaching into the "private" struct. */
+sit_format sit_get_format(const sit_archive *ar);
 
 #ifdef __cplusplus
 }

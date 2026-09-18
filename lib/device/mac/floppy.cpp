@@ -139,10 +139,12 @@ mediatype_t macFloppy::mount(FILE *f, const char *filename, uint32_t disksize,
     case 1:
       SYSTEM_BUS.write((uint8_t)'s');
       SYSTEM_BUS.write((uint8_t)(track_pos | 128));
+      _disk_inserted = true; // unmount() may now legitimately send 'r' for this slot
       break;
     case 2:
       SYSTEM_BUS.write((uint8_t)'d');
       SYSTEM_BUS.write((uint8_t)(track_pos | 128));
+      _disk_inserted = true;
       break;
     default:
       break;
@@ -272,11 +274,17 @@ void macFloppy::unmount()
 
   if (was_dcd)
     SYSTEM_BUS.rem_dcd_mount(id());
-  else if (is_floppy_slot() && device_active)
+  else if (is_floppy_slot() && _disk_inserted)
   {
-    // tell the Pico the floppy is gone so the Mac sees a real eject
+    // tell the Pico the floppy is gone so the Mac sees a real eject - but
+    // only once, and only if a disk was actually inserted ('s'/'d' sent):
+    // device_active alone isn't a safe proxy for that (an HD20 mount also
+    // sets it, and even in this slot a mount that got as far as
+    // device_active=true without num_sides being 1 or 2 never told the
+    // Pico a disk showed up).
     floppy_ll.stop();
     SYSTEM_BUS.write((uint8_t)'r');
+    _disk_inserted = false;
   }
   device_active = false;
 }
