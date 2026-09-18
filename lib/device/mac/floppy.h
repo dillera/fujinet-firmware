@@ -5,6 +5,7 @@
 #include "../disk.h"
 #include "bus.h"
 #include "../media/media.h"
+#include "../../media/mac/sitMount.h"
 
 /*
 // drive state bits
@@ -36,6 +37,12 @@ class macFloppy : public virtualDevice
 protected:
     MediaType *_disk = nullptr;
 
+    // Set only when the currently mounted image came from a StuffIt/
+    // BinHex archive; owns the extracted PSRAM buffers. See
+    // lib/media/mac/sitMount.h and the ownership note there, and
+    // macFloppy::unmount()/~macFloppy() for how it is freed.
+    SitMount *_sit = nullptr;
+
     char disk_num = '0';
     bool enabled = false;
     int track_pos = 0;
@@ -62,7 +69,7 @@ public:
     bool readonly = true;
 
     macFloppy() {};
-    ~macFloppy() {};
+    ~macFloppy() { delete _sit; };
 
     mediatype_t mount(FILE *f, const char *filename, uint32_t disksize,
                       disk_access_flags_t access_mode,
@@ -79,6 +86,14 @@ public:
     void set_disk_number(char c) { disk_num = c; _devnum = c; }
     char get_disk_number() { return disk_num; };
     mediatype_t disktype() { return _disk == nullptr ? MEDIATYPE_UNKNOWN : _disk->_mediatype; };
+
+    // For the web UI: was the currently mounted image unstuffed from an
+    // archive, and if so what was its name inside the archive / how big
+    // is it / where does its PSRAM buffer live (for /sitdownload).
+    bool has_sit_source() { return _sit != nullptr; }
+    const char *sit_inner_filename() { return (_sit != nullptr) ? _sit->inner_filename : ""; }
+    uint32_t sit_image_len() { return (_sit != nullptr) ? _sit->image_len : 0; }
+    const uint8_t *sit_image_data() { return (_sit != nullptr) ? _sit->image_buf : nullptr; }
 
     void shutdown() override {};
     void process(mac_cmd_t cmd) override;

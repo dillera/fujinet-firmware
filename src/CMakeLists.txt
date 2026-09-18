@@ -74,6 +74,7 @@ set(INCLUDES
     ${CMAKE_SOURCE_DIR}/lib/qrcode
     ${CMAKE_SOURCE_DIR}/lib/runcpm
     ${CMAKE_SOURCE_DIR}/lib/sam
+    ${CMAKE_SOURCE_DIR}/lib/stuffit
     ${CMAKE_SOURCE_DIR}/lib/task
     ${CMAKE_SOURCE_DIR}/lib/tcpip
     ${CMAKE_SOURCE_DIR}/lib/telnet
@@ -156,6 +157,7 @@ FILE(GLOB_RECURSE SOURCES
     ${CMAKE_SOURCE_DIR}/lib/qrcode/*.cpp
     ${CMAKE_SOURCE_DIR}/lib/sam/*.c
     ${CMAKE_SOURCE_DIR}/lib/sam/*.cpp
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/*.c
     ${CMAKE_SOURCE_DIR}/lib/task/*.cpp
     ${CMAKE_SOURCE_DIR}/lib/tcpip/*.cpp
     ${CMAKE_SOURCE_DIR}/lib/telnet/*.c
@@ -181,3 +183,6 @@ target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-return-type)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-format-extra-args)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-implicit-fallthrough)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-missing-field-initializers)
+# lib/stuffit is host-tested with plain gcc/clang, which don't flag this;
+# the ESP-IDF component build's -Werror does. Not our code to edit here.
+target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-error=format-truncation)

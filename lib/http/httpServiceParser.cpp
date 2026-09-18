@@ -546,6 +546,13 @@ const string fnHttpServiceParser::substitute_tag(const string &tag)
         host_slot = Config.get_mount_host_slot(drive_slot);
         if (host_slot != HOST_SLOT_INVALID) {
             resultstream << Config.get_mount_path(drive_slot);
+#ifdef BUILD_MAC
+            {
+                DISK_DEVICE *dd = theFuji->get_disk_dev(drive_slot);
+                if (dd != nullptr && dd->has_sit_source())
+                    resultstream << " -> " << dd->sit_inner_filename();
+            }
+#endif
             resultstream << " (" << (Config.get_mount_mode(drive_slot) == fnConfig::mount_modes::MOUNTMODE_READ ? "R" : "W") << ")";
         } else {
             resultstream << "(Empty)";

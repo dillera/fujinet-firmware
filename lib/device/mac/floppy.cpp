@@ -23,6 +23,66 @@ mediatype_t macFloppy::mount(FILE *f, const char *filename, uint32_t disksize,
   if (disk_type == MEDIATYPE_UNKNOWN)
     disk_type = MediaType::discover_mediatype(filename);
 
+  if (disk_type == MEDIATYPE_SIT)
+  {
+    // StuffIt/BinHex archive: unstuff the disk image it carries into a
+    // PSRAM buffer, then recurse into this same function with that
+    // buffer (via fmemopen) and the inner image's own name, so DC42 vs
+    // raw vs HFS classification below runs exactly as it does for a
+    // plain host file. See lib/media/mac/sitMount.h/.cpp.
+    if (_sit != nullptr)
+    {
+      delete _sit; // stray leftover from an earlier failed attempt
+      _sit = nullptr;
+    }
+    _sit = new SitMount();
+    if (!_sit->extract(f, filename))
+    {
+      Debug_printf("\nStuffIt mount: could not extract a disk image from '%s'\n", filename);
+      delete _sit;
+      _sit = nullptr;
+      fclose(f);
+      device_active = false;
+      return MEDIATYPE_UNKNOWN;
+    }
+
+    bool wants_floppy = is_floppy_slot();
+    bool image_is_floppy = (_sit->kind == SIT_IMAGE_FLOPPY);
+    if (wants_floppy != image_is_floppy)
+    {
+      Debug_printf("\nStuffIt mount: '%s' -> '%s' is a %s image, slot %c is a %s slot - refusing\n",
+                   filename, _sit->inner_filename,
+                   image_is_floppy ? "floppy" : "HD20",
+                   disk_num + 1,
+                   wants_floppy ? "floppy" : "HD20");
+      delete _sit;
+      _sit = nullptr;
+      fclose(f);
+      device_active = false;
+      return MEDIATYPE_UNKNOWN;
+    }
+
+    Debug_printf("\nStuffIt mount: '%s' -> '%s' (%u bytes, %s)\n",
+                 filename, _sit->inner_filename, _sit->image_len,
+                 image_is_floppy ? "floppy" : "HD20");
+
+    // The archive has been fully unstuffed into PSRAM; the host FILE* it
+    // came in on is no longer needed - the extracted image's own FILE*
+    // (fmemopen, owned by _sit) takes its place below.
+    fclose(f);
+
+    mediatype_t result = mount(_sit->image_fh, _sit->inner_filename, _sit->image_len,
+                                access_mode, _sit->disk_type);
+    if (result == MEDIATYPE_UNKNOWN)
+    {
+      // Inner mount rejected the extracted image - nothing else will
+      // free _sit's buffers, so do it here.
+      delete _sit;
+      _sit = nullptr;
+    }
+    return result;
+  }
+
   _disk_size_in_blocks = disksize / 512;
   readonly = !(access_mode & DISK_ACCESS_MODE_WRITE);
 
@@ -193,9 +253,20 @@ void macFloppy::unmount()
 
   if (_disk != nullptr)
   {
-    _disk->unmount();
+    _disk->unmount(); // for a sit-backed mount, this fclose()s _sit->image_fh
     delete _disk; // virtual destructor, handles MOOF track buffers
     _disk = nullptr;
+  }
+
+  if (_sit != nullptr)
+  {
+    // fmemopen()'s fclose() (just run above, if this was a sit-backed
+    // mount) does not free the backing buffer - we still own and must
+    // free image_buf/rsrc_buf. Clear image_fh first so SitMount::release()
+    // does not fclose() it a second time.
+    _sit->image_fh = nullptr;
+    delete _sit;
+    _sit = nullptr;
   }
 
   if (was_dcd)
