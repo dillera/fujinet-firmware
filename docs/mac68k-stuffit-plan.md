@@ -1,5 +1,23 @@
 # Mounting StuffIt archives on the Mac 68k FujiNet
 
+Status 2026-09-18: **working**. Now_Software.sit (13 MB, StuffIt 5 /
+Arsenic) mounted in slot 1 from the web UI on a 512Ke: the ESP32 unstuffs
+"Install 2.img" (~85 s over TNFS), decodes the Disk Copy 6 image to a
+1.44 MB HFS volume, mounts it as an HD20, shows `archive -> image` in the
+slot line and serves the raw image at `/sitdownload?deviceslot=N`
+(verified byte-identical to ndif2raw). Booted from MacSpeak in slot 5,
+the volume appears on the desktop.
+
+Practical notes:
+* Mount the archive **before** the floppy: Arsenic needs 2.6 MB of PSRAM
+  scratch, NDIF decoding briefly holds the compressed fork and the raw
+  image together, and an encoded 400K/800K floppy takes 0.6/1.2 MB.
+* MacSpeak.dsk only boots when mounted read/write (its System writes to
+  the boot disk); a locked mount gives a happy Mac, an eject and the "?".
+* `./build.sh -f` (needed for web UI changes) rebuilds the filesystem
+  from `data/webui/template/fnconfig.tmpl.ini` and wipes the device
+  config (WiFi, hosts, slots). Save the config first.
+
 Goal: the user picks a `.sit` in the web UI, the ESP32 unstuffs the disk
 image inside it, works out whether it is a floppy image or an HD20
 volume/drive image, mounts it in the chosen slot, and offers the unstuffed
