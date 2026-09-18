@@ -288,6 +288,7 @@ add_executable(unsit
     ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_bwt.c
     ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_arsenic.c
     ${CMAKE_SOURCE_DIR}/lib/stuffit/binhex.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/ndif.c
 )
 target_include_directories(unsit PRIVATE ${CMAKE_SOURCE_DIR}/lib/)
 
@@ -307,4 +308,58 @@ if(UNAR_EXECUTABLE AND EXISTS "${SIT_SAMPLES_DIR}")
   set_tests_properties(stuffit_sample_tests PROPERTIES DEPENDS unsit)
 else()
   message(STATUS "unar and/or ${SIT_SAMPLES_DIR} not found - skipping stuffit_sample_tests")
+endif()
+
+# ------------------------------------------------------------------------------
+# NDIF (Disk Copy 6, lib/stuffit/ndif.c - see docs/mac68k-stuffit-plan.md
+# Phase 0b) decoder test. Now_Software.sit's "Install Disk N.img" entries are
+# real-world NDIF images wrapped inside a StuffIt archive; ndif_test.sh uses
+# `unsit -i` (built into the same `unsit` binary above, now that ndif.c is
+# linked in) to unstuff each one via lib/stuffit + lib/stuffit/ndif.c, and
+# compares the result byte-for-byte against `ndif2raw`
+# (~/code/FujiNet_macOS_2026/ref_ndif2raw/), the independent oracle
+# implementation this library was ported from, run over the same entry's
+# resource fork as extracted by `unar -D` (which preserves it as a
+# com.apple.ResourceFork xattr, exactly what ndif2raw's --format=resource-fork
+# input expects). It also runs tests/ndif_blocks_test (built below) as a spot
+# check of ndif_read_blocks() against the same reference output. `ndif2raw`,
+# `unar`, and the sit_samples/ directory are dev-machine-only tooling, so - like
+# stuffit_sample_tests above - this test is skipped (not failed) when any of
+# them is unavailable.
+# ------------------------------------------------------------------------------
+add_executable(ndif_blocks_test
+    ndif_blocks_test.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/stuffit.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_io.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_crc16.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_rle90.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_lzw.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_prefixcode.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_huffman.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_lzh13.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_bwt.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/sit_arsenic.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/binhex.c
+    ${CMAKE_SOURCE_DIR}/lib/stuffit/ndif.c
+)
+target_include_directories(ndif_blocks_test PRIVATE ${CMAKE_SOURCE_DIR}/lib/)
+
+find_program(NDIF2RAW_MAKE make)
+set(NDIF2RAW_DIR "$ENV{HOME}/code/FujiNet_macOS_2026/ref_ndif2raw")
+set(NOW_SOFTWARE_SIT "${SIT_SAMPLES_DIR}/Now_Software.sit")
+
+if(UNAR_EXECUTABLE AND NDIF2RAW_MAKE AND EXISTS "${NDIF2RAW_DIR}" AND EXISTS "${NOW_SOFTWARE_SIT}")
+  add_test(NAME ndif_sample_tests
+    COMMAND ${CMAKE_COMMAND} -E env
+      "UNSIT_BIN=$<TARGET_FILE:unsit>"
+      "NDIF_BLOCKS_TEST_BIN=$<TARGET_FILE:ndif_blocks_test>"
+      "UNAR_BIN=${UNAR_EXECUTABLE}"
+      "MAKE_BIN=${NDIF2RAW_MAKE}"
+      "NDIF2RAW_DIR=${NDIF2RAW_DIR}"
+      "NOW_SOFTWARE_SIT=${NOW_SOFTWARE_SIT}"
+      bash ${CMAKE_CURRENT_SOURCE_DIR}/ndif_test.sh
+  )
+  set_tests_properties(ndif_sample_tests PROPERTIES DEPENDS unsit)
+else()
+  message(STATUS "unar, make, ${NDIF2RAW_DIR} and/or ${NOW_SOFTWARE_SIT} not found - skipping ndif_sample_tests")
 endif()

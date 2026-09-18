@@ -8,15 +8,26 @@
  *   unsit -x archive.sit[.hqx] path outfile     extract one entry's data fork
  *   unsit -xr archive.sit[.hqx] path outfile    extract one entry's resource fork
  *   unsit -a archive.sit[.hqx] outdir           extract every entry into outdir
+ *   unsit -i archive.sit[.hqx] path outfile     unstuff+undiskimage: decode
+ *                                               entry's NDIF (Disk Copy 6)
+ *                                               image to a raw disk image
  *
  * A BinHex-wrapped archive (.hqx, or any file starting with the BinHex
  * ASCII banner regardless of extension) is unwrapped transparently in
  * every mode: unsit always tries hqx_open() first and only falls back
  * to opening the file directly as a bare .sit when hqx_open() reports
  * SIT_E_FORMAT (i.e. no BinHex banner found at all).
+ *
+ * -i is lib/stuffit/ndif.c's test harness: it extracts one entry's data
+ * fork to a temp file and its resource fork to memory (same
+ * sit_next_entry()/sit_extract() calls as -x/-xr), then feeds both to
+ * ndif_open()/ndif_extract() to decode the NDIF image inside - the
+ * StuffIt archive's own compression is unrelated to and independent of
+ * NDIF's chunk compression, so both layers run back to back.
  */
 #include "stuffit/stuffit.h"
 #include "stuffit/binhex.h"
+#include "stuffit/ndif.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,6 +56,20 @@ static int file_sink(const uint8_t *buf, size_t n, void *ctx)
 {
     FILE *out = (FILE *)ctx;
     return fwrite(buf, 1, n, out) != n;
+}
+
+/* sink for do_ndif_extract()'s resource-fork extraction: `cap` is
+ * known exactly ahead of time (sit_entry's rsrc_len), so this just
+ * refuses to overrun rather than growing. */
+typedef struct { uint8_t *buf; size_t off; size_t cap; } mem_sink_ctx;
+
+static int mem_sink(const uint8_t *buf, size_t n, void *ctx)
+{
+    mem_sink_ctx *c = (mem_sink_ctx *)ctx;
+    if (c->off + n > c->cap) return 1;
+    memcpy(c->buf + c->off, buf, n);
+    c->off += n;
+    return 0;
 }
 
 /* mkdir -p equivalent, only for the plain '/'-separated relative paths
@@ -294,6 +319,93 @@ static int do_extract_all(sit_archive *ar, const char *outdir)
     return 0;
 }
 
+/* Finds entry `wantpath`, extracts its data fork to a tmpfile() (ndif_open
+ * wants a seekable FILE*) and its resource fork to an exactly-sized malloc'd
+ * buffer (rsrc_len is already known from sit_entry, so no growable buffer is
+ * needed), then decodes the NDIF image inside via ndif_open()/ndif_extract()
+ * into outfile. */
+static int do_ndif_extract(sit_archive *ar, const char *wantpath, const char *outfile)
+{
+    sit_entry e;
+    int found = 0;
+    int rc;
+    while ((rc = sit_next_entry(ar, &e)) == 1) {
+        if (strcmp(e.path, wantpath) == 0) { found = 1; break; }
+    }
+    if (rc < 0) {
+        fprintf(stderr, "unsit: parse error: %s\n", sit_strerror(rc));
+        return 1;
+    }
+    if (!found) {
+        fprintf(stderr, "unsit: no such entry: %s\n", wantpath);
+        return 1;
+    }
+    if (e.rsrc_len == 0) {
+        fprintf(stderr, "unsit: %s has no resource fork (needed for its NDIF 'bcem' block map)\n", wantpath);
+        return 1;
+    }
+
+    FILE *datatmp = tmpfile();
+    if (!datatmp) {
+        fprintf(stderr, "unsit: cannot create temp file for %s data fork: %s\n", wantpath, strerror(errno));
+        return 1;
+    }
+
+    rc = sit_extract(ar, &e, SIT_FORK_DATA, file_sink, datatmp, NULL);
+    if (rc != SIT_OK) {
+        fprintf(stderr, "unsit: extract failed for %s (data fork): %s\n", wantpath, sit_strerror(rc));
+        fclose(datatmp);
+        return 1;
+    }
+    rewind(datatmp);
+
+    uint8_t *rsrcbuf = (uint8_t *)malloc(e.rsrc_len);
+    if (!rsrcbuf) {
+        fprintf(stderr, "unsit: out of memory for %s resource fork (%u bytes)\n", wantpath, e.rsrc_len);
+        fclose(datatmp);
+        return 1;
+    }
+
+    mem_sink_ctx rctx = { rsrcbuf, 0, e.rsrc_len };
+    rc = sit_extract(ar, &e, SIT_FORK_RSRC, mem_sink, &rctx, NULL);
+    if (rc != SIT_OK) {
+        fprintf(stderr, "unsit: extract failed for %s (resource fork): %s\n", wantpath, sit_strerror(rc));
+        free(rsrcbuf);
+        fclose(datatmp);
+        return 1;
+    }
+
+    ndif_image img;
+    rc = ndif_open(&img, datatmp, rsrcbuf, e.rsrc_len, &sit_libc_allocator);
+    if (rc != NDIF_OK) {
+        fprintf(stderr, "unsit: ndif_open failed for %s: %s\n", wantpath, ndif_strerror(rc));
+        free(rsrcbuf);
+        fclose(datatmp);
+        return 1;
+    }
+
+    FILE *out = fopen(outfile, "wb");
+    if (!out) {
+        fprintf(stderr, "unsit: cannot create %s: %s\n", outfile, strerror(errno));
+        ndif_close(&img);
+        free(rsrcbuf);
+        fclose(datatmp);
+        return 1;
+    }
+
+    rc = ndif_extract(&img, file_sink, out);
+    fclose(out);
+    ndif_close(&img);
+    free(rsrcbuf);
+    fclose(datatmp);
+
+    if (rc != NDIF_OK) {
+        fprintf(stderr, "unsit: ndif_extract failed for %s: %s\n", wantpath, ndif_strerror(rc));
+        return 1;
+    }
+    return 0;
+}
+
 static void usage(const char *argv0)
 {
     fprintf(stderr,
@@ -301,8 +413,9 @@ static void usage(const char *argv0)
         "  %s -l archive.sit[.hqx]\n"
         "  %s -x archive.sit[.hqx] entrypath outfile\n"
         "  %s -xr archive.sit[.hqx] entrypath outfile\n"
-        "  %s -a archive.sit[.hqx] outdir\n",
-        argv0, argv0, argv0, argv0);
+        "  %s -a archive.sit[.hqx] outdir\n"
+        "  %s -i archive.sit[.hqx] entrypath outfile   (decode entry's NDIF image)\n",
+        argv0, argv0, argv0, argv0, argv0);
 }
 
 int main(int argc, char **argv)
@@ -314,7 +427,7 @@ int main(int argc, char **argv)
 
     int wantargc;
     if (strcmp(mode, "-l") == 0) wantargc = 3;
-    else if (strcmp(mode, "-x") == 0 || strcmp(mode, "-xr") == 0) wantargc = 5;
+    else if (strcmp(mode, "-x") == 0 || strcmp(mode, "-xr") == 0 || strcmp(mode, "-i") == 0) wantargc = 5;
     else if (strcmp(mode, "-a") == 0) wantargc = 4;
     else { usage(argv[0]); return 2; }
 
@@ -335,6 +448,8 @@ int main(int argc, char **argv)
         rc = do_extract_one(&ar, argv[3], argv[4], SIT_FORK_DATA);
     } else if (strcmp(mode, "-xr") == 0) {
         rc = do_extract_one(&ar, argv[3], argv[4], SIT_FORK_RSRC);
+    } else if (strcmp(mode, "-i") == 0) {
+        rc = do_ndif_extract(&ar, argv[3], argv[4]);
     } else {
         rc = do_extract_all(&ar, argv[3]);
     }
