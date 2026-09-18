@@ -395,38 +395,10 @@ bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
         return false;
     }
 
-    image_buf = (uint8_t *)heap_caps_malloc(best->data_len, MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
-    if (image_buf == nullptr)
-    {
-        Debug_printf("\nStuffIt: no PSRAM for a %u byte image ('%s')", best->data_len, best->path);
-        sit_close(ar);
-        if (hqx_fh != nullptr)
-            fclose(hqx_fh);
-        if (have_hqx)
-            hqx_close(&hqx);
-        sit_mount_free_locals(ar, e, best);
-        return false;
-    }
-
-    sit_mount_sink_ctx dctx = { image_buf, best->data_len, 0, SIT_MOUNT_PROGRESS_STEP, "data fork" };
     sit_progress prog;
-    rc = sit_extract(ar, best, SIT_FORK_DATA, sit_mount_sink, &dctx, &prog);
-    if (rc != SIT_OK)
-    {
-        Debug_printf("\nStuffIt: extracting '%s' failed: %s", best->path, sit_strerror(rc));
-        sit_close(ar);
-        if (hqx_fh != nullptr)
-            fclose(hqx_fh);
-        if (have_hqx)
-            hqx_close(&hqx);
-        sit_mount_free_locals(ar, e, best);
-        release();
-        return false;
-    }
-    image_len = dctx.pos;
-
-    // Resource fork: best-effort, small cap, kept only for a future NDIF
-    // block-map hook - never fatal to the mount if it's missing/too big.
+    // Resource fork first: it is tiny, but decompressing it can need the
+    // Arsenic scratch (5 x block size, 2.6 MB), which no longer fits once
+    // the image buffer is allocated. Never fatal if missing or too big.
     if (best->rsrc_len > 0 && best->rsrc_len <= SIT_MOUNT_MAX_RSRC)
     {
         rsrc_buf = (uint8_t *)heap_caps_malloc(best->rsrc_len, MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
@@ -452,6 +424,36 @@ bool SitMount::extract(FILE *archive_fh, const char *archive_filename)
         Debug_printf("\nStuffIt: resource fork of '%s' is %u bytes, over the %u byte cap - skipping",
                      best->path, best->rsrc_len, SIT_MOUNT_MAX_RSRC);
     }
+
+
+    image_buf = (uint8_t *)heap_caps_malloc(best->data_len, MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
+    if (image_buf == nullptr)
+    {
+        Debug_printf("\nStuffIt: no PSRAM for a %u byte image ('%s')", best->data_len, best->path);
+        sit_close(ar);
+        if (hqx_fh != nullptr)
+            fclose(hqx_fh);
+        if (have_hqx)
+            hqx_close(&hqx);
+        sit_mount_free_locals(ar, e, best);
+        return false;
+    }
+
+    sit_mount_sink_ctx dctx = { image_buf, best->data_len, 0, SIT_MOUNT_PROGRESS_STEP, "data fork" };
+    rc = sit_extract(ar, best, SIT_FORK_DATA, sit_mount_sink, &dctx, &prog);
+    if (rc != SIT_OK)
+    {
+        Debug_printf("\nStuffIt: extracting '%s' failed: %s", best->path, sit_strerror(rc));
+        sit_close(ar);
+        if (hqx_fh != nullptr)
+            fclose(hqx_fh);
+        if (have_hqx)
+            hqx_close(&hqx);
+        sit_mount_free_locals(ar, e, best);
+        release();
+        return false;
+    }
+    image_len = dctx.pos;
 
     sit_close(ar);
     if (hqx_fh != nullptr)
