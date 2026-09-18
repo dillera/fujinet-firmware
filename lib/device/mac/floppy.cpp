@@ -248,8 +248,9 @@ DCDDATA       Communication channel from DCD device to Macintosh
 
 void macFloppy::unmount()
 {
-  bool was_dcd = (_disk != nullptr) && is_dcd_slot() &&
-                 (disktype() == MEDIATYPE_DSK || disktype() == MEDIATYPE_DC42 || disktype() == MEDIATYPE_DCD);
+  // anything mounted in slots 1-4 is an HD20 by construction (including an
+  // image unstuffed from an archive, whose media type is reported as SIT)
+  bool was_dcd = (_disk != nullptr) && is_dcd_slot();
 
   if (_disk != nullptr)
   {
