@@ -1,5 +1,10 @@
 name: "FujiNet CI"
 
+# Only run when files that feed the firmware build change. The path list is
+# "everything, minus what provably cannot affect the build" -- docs, notes,
+# markdown, the pico/ trees (covered by pico-carts.yml), and PC-only sources.
+# Workflow config that DOES feed this build (this file and the release INIs)
+# is re-included after the blanket .github exclusion.
 on:
   push:
     # Do not build tags. Do not build release branch
@@ -8,11 +13,45 @@ on:
       - "!release"
     tags:
       - "!**"
+    paths:
+      - "**"
+      - "!**.md"
+      - "!docs/**"
+      - "!notes/**"
+      - "!pico/**"
+      - "!components_pc/**"
+      - "!fujinet_pc.cmake"
+      - "!LICENSE"
+      - "!.gitignore"
+      - "!.clang-format"
+      - "!.dir-locals.el"
+      - "!.travis.yml"
+      - "!.github/**"
+      - ".github/workflows/autobuild.yml"
+      - ".github/workflows/platformio.release-*.ini"
   pull_request:
     # Do not build release branch
     branches:
       - "**"
       - "!release"
+    # Keep in sync with the push paths above.
+    paths:
+      - "**"
+      - "!**.md"
+      - "!docs/**"
+      - "!notes/**"
+      - "!pico/**"
+      - "!components_pc/**"
+      - "!fujinet_pc.cmake"
+      - "!LICENSE"
+      - "!.gitignore"
+      - "!.clang-format"
+      - "!.dir-locals.el"
+      - "!.travis.yml"
+      - "!.github/**"
+      - ".github/workflows/autobuild.yml"
+      - ".github/workflows/platformio.release-*.ini"
+  workflow_dispatch:
 
 jobs:
   tagged-release:

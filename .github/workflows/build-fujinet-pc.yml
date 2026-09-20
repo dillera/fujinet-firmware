@@ -2,6 +2,13 @@
 
 name: Build FujiNet-PC
 
+# Only run when files that feed the FujiNet-PC build change. The path list is
+# "everything, minus what provably cannot affect the build" -- docs, notes,
+# markdown, the pico/ trees (covered by pico-carts.yml), and ESP32-only build
+# inputs (board defs, sdkconfigs, partition tables, PlatformIO INIs). This
+# workflow's own file is re-included after the blanket .github exclusion.
+# The schedule and workflow_dispatch triggers below are unaffected by these
+# filters -- the nightly FujiNet-PC release always builds.
 on:
   push:
     # Do not build tags. Do not build release branch
@@ -10,12 +17,47 @@ on:
       - "!release"
     tags:
       - "!**"
+    paths:
+      - "**"
+      - "!**.md"
+      - "!docs/**"
+      - "!notes/**"
+      - "!pico/**"
+      - "!boards/**"
+      - "!sdkconfig*"
+      - "!fujinet_partitions_*.csv"
+      - "!platformio-ini-files/**"
+      - "!LICENSE"
+      - "!.gitignore"
+      - "!.clang-format"
+      - "!.dir-locals.el"
+      - "!.travis.yml"
+      - "!.github/**"
+      - ".github/workflows/build-fujinet-pc.yml"
 
   pull_request:
     # Do not build release branch
     branches:
       - "**"
       - "!release"
+    # Keep in sync with the push paths above.
+    paths:
+      - "**"
+      - "!**.md"
+      - "!docs/**"
+      - "!notes/**"
+      - "!pico/**"
+      - "!boards/**"
+      - "!sdkconfig*"
+      - "!fujinet_partitions_*.csv"
+      - "!platformio-ini-files/**"
+      - "!LICENSE"
+      - "!.gitignore"
+      - "!.clang-format"
+      - "!.dir-locals.el"
+      - "!.travis.yml"
+      - "!.github/**"
+      - ".github/workflows/build-fujinet-pc.yml"
 
   workflow_dispatch:
     inputs:
