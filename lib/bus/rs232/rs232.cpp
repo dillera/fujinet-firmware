@@ -115,6 +115,8 @@ void systemBus::_rs232_process_cmd()
         return;
     }
 
+    ++_packets_handled;
+
     // Turn on the RS232 indicator LED
     fnLedManager.set(eLed::LED_BUS, true);
 
