@@ -21,9 +21,9 @@ emulator_port=6416    ; serial-over-TCP for POSE / CloudpilotEmu; 0 turns it off
 serial_port=          ; a cradle: "bus" on the ESP32, a device path on FujiNet-PC
 ```
 
-`serial_port=bus` gives the cradle the UART the platform bus would use, so the
-bus is not started. The `fujinet-rs232-s3-palm` board builds the FN-RS232 this
-way by default; connect the cradle to its DB-9 through a null modem.
+`serial_port=bus` puts the cradle on the RS232 bus port, shared with the bus.
+The `fujinet-rs232-s3-palm` board builds the FN-RS232 this way by default;
+connect the cradle to its DB-9 through a null modem.
 
 The SD card layout, under `/palm`:
 
@@ -33,12 +33,15 @@ The SD card layout, under `/palm`:
 | `installed/`        | files moved here after a successful install           |
 | `backup/<user>/`    | databases read back from the device                    |
 
-## The cradle
+## The cradle on the bus
 
-A HotSync always opens at 9600 baud; Palm apps that talk to FujiNet use
-115200 (`PalmAppChannel.h`). The cradle alternates between the two rates every
-1.5 s. Both the device's WAKEUP and an app's request are repeated for longer
-than one cycle, so each lands in its own window.
+A HotSync always opens at 9600 baud, and a 9600-baud byte read at the bus rate
+is a line break the UART drops, so the two cannot share one rate. The service
+borrows the bus port for 1.5 s at 9600 to catch a WAKEUP, then gives it back to
+the bus for 1.5 s (`HotSyncBusPort.h`). In between, a Palm app talks to FujiNet
+with FujiBus, like any RS232 host. The device repeats its WAKEUP for longer
+than one cycle. A Palm running an app cannot HotSync, so while FujiBus packets
+keep arriving the service leaves the port to the bus entirely.
 
 ## Layout
 
@@ -51,8 +54,8 @@ than one cycle, so each lands in its own window.
 | `Dlp.*`, `DlpClient.*`  | Desktop Link Protocol encoding and typed commands       |
 | `PalmDatabase.*`        | `.pdb`/`.prc` files                                     |
 | `HotSyncSession.*`      | one sync: identify, install, back up, stamp user info   |
-| `PalmAppChannel.*`      | the text channel for Palm apps                          |
 | `HotSyncStorage.h`, `HotSyncFsStorage.*` | files on the SD card                   |
+| `HotSyncBusPort.h`      | the bus port a cradle borrows                           |
 | `HotSyncLinks.*`, `HotSyncService.*`     | FujiNet sockets, serial, and thread    |
 
 Everything up to `HotSyncSession` depends only on `include/global_types.h`, so

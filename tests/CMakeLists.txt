@@ -431,7 +431,6 @@ add_executable(hotsync_tests
     ${CMAKE_SOURCE_DIR}/lib/hotsync/DlpClient.cpp
     ${CMAKE_SOURCE_DIR}/lib/hotsync/PalmDatabase.cpp
     ${CMAKE_SOURCE_DIR}/lib/hotsync/HotSyncSession.cpp
-    ${CMAKE_SOURCE_DIR}/lib/hotsync/PalmAppChannel.cpp
 )
 
 target_include_directories(hotsync_tests PRIVATE

@@ -529,7 +529,7 @@ private:
     struct hotsync_info
     {
 #ifdef HOTSYNC_CRADLE_DEFAULT
-        // Boards built as a Palm cradle server take the bus UART out of the box.
+        // Boards built as a Palm cradle server share the bus port out of the box.
         bool enabled = true;
 #else
         bool enabled = false;
@@ -539,7 +539,7 @@ private:
         std::string backup = "flagged";
         int netsync_port = 14238;
         int emulator_port = 6416;
-        // Cradle serial device: a host path on FujiNet-PC, "bus" on the ESP32
+        // Cradle serial device: a host path on FujiNet-PC, or "bus" to share the bus port
 #ifdef HOTSYNC_CRADLE_DEFAULT
         std::string serial_port = "bus";
 #else

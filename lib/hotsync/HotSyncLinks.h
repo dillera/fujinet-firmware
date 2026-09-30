@@ -8,9 +8,9 @@
 #include "fnTcpClient.h"
 
 #include <chrono>
+#include <functional>
 
 class IOChannel;
-class RS232ChannelProtocol;
 
 class HotSyncTcpLink : public HotSyncLink
 {
@@ -29,8 +29,10 @@ private:
 class HotSyncSerialLink : public HotSyncLink
 {
 public:
-    HotSyncSerialLink(IOChannel &channel, RS232ChannelProtocol &control)
-        : _channel(channel), _control(control) {}
+    using BaudSetter = std::function<void(uint32_t)>;
+
+    HotSyncSerialLink(IOChannel &channel, BaudSetter set_baud)
+        : _channel(channel), _set_baud(std::move(set_baud)) {}
 
     int read(uint8_t *buf, size_t len, uint32_t timeout_ms) override;
     int write(const uint8_t *buf, size_t len) override;
@@ -46,7 +48,7 @@ public:
 
 private:
     IOChannel &_channel;
-    RS232ChannelProtocol &_control;
+    BaudSetter _set_baud;
     size_t _received = 0;
     bool _has_deadline = false;
     std::chrono::steady_clock::time_point _deadline;

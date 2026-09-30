@@ -1,7 +1,6 @@
 #include "HotSyncLinks.h"
 
 #include "IOChannel.h"
-#include "RS232ChannelProtocol.h"
 #include "global_types.h"
 
 #include <algorithm>
@@ -102,6 +101,6 @@ int HotSyncSerialLink::write(const uint8_t *buf, size_t len)
 
 void HotSyncSerialLink::set_baud_rate(uint32_t baud)
 {
-    _control.setBaudrate(baud);
+    _set_baud(baud);
     std::this_thread::sleep_for(BAUD_SETTLE);
 }

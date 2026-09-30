@@ -8,7 +8,6 @@
 #include "hotsync/HotSyncSession.h"
 #include "hotsync/NetSyncTransport.h"
 #include "hotsync/PadpTransport.h"
-#include "hotsync/PalmAppChannel.h"
 #include "hotsync/PalmDatabase.h"
 #include "hotsync/Slp.h"
 
@@ -425,12 +424,4 @@ TEST_CASE("A sync installs queued apps and names a new device")
     CHECK((palm.written_mod_flags & (DLP_MOD_USER_ID | DLP_MOD_USER_NAME)) ==
           (DLP_MOD_USER_ID | DLP_MOD_USER_NAME));
     CHECK(palm.calls.back() == DlpFunc::EndOfSync);
-}
-
-TEST_CASE("The Palm app channel answers a ping and ignores anything else")
-{
-    PalmAppStatus status{"v1.5", "192.168.1.20", "HomeNet", "2026-09-30 17:40"};
-    CHECK(palm_app_reply("FUJI PING", status) ==
-          "FUJI OK|Firmware v1.5|IP 192.168.1.20|WiFi HomeNet|2026-09-30 17:40\r\n");
-    CHECK(palm_app_reply("HELLO", status).empty());
 }

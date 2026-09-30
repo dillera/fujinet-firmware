@@ -29,6 +29,11 @@ success_is_true HotSyncFsStorage::ensure_dir(const std::string &dir)
     RETURN_SUCCESS_AS_TRUE();
 }
 
+success_is_true HotSyncFsStorage::create_install_folder()
+{
+    return ensure_dir(path("install"));
+}
+
 std::vector<std::string> HotSyncFsStorage::pending_installs()
 {
     std::vector<std::string> names;
