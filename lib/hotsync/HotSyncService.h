@@ -4,13 +4,13 @@
 // Makes FujiNet a HotSync server. A Palm device syncs with it over:
 //   - network HotSync (NetSync, TCP 14238);
 //   - serial-over-TCP, which POSE and CloudpilotEmu use for their serial port;
-//   - a serial cradle, on the ESP32 bus UART or a FujiNet-PC serial device.
+//   - a serial cradle, on a FujiNet-PC serial device or sharing the platform
+//     bus port (HotSyncBusPort.h), where Palm apps then reach FujiNet.
 // Each sync installs the files queued in <root>/install and backs databases
-// up to <root>/backup/<user>. Between syncs the cradle also serves Palm apps
-// (PalmAppChannel.h).
+// up to <root>/backup/<user>.
 
+#include "HotSyncBusPort.h"
 #include "HotSyncSession.h"
-#include "PalmAppChannel.h"
 
 #include <atomic>
 #include <memory>
@@ -29,10 +29,12 @@ struct HotSyncServiceConfig {
     // 0 disables a listener.
     uint16_t netsync_port = 14238;
     uint16_t emulator_port = 6416;
-    // Serial device for a cradle: a host device path on FujiNet-PC, or "bus"
-    // on the ESP32 to take the platform bus UART. Empty disables it.
+    // Serial device for a cradle: a host device path on FujiNet-PC, or
+    // HOTSYNC_BUS_SERIAL_PORT to share the platform bus port. Empty disables it.
     std::string serial_port;
 };
+
+constexpr const char *HOTSYNC_BUS_SERIAL_PORT = "bus";
 
 class HotSyncService
 {
@@ -41,25 +43,26 @@ public:
     HotSyncService();
     ~HotSyncService();
 
-    void start(const HotSyncServiceConfig &config, FileSystem &fs);
+    // bus_port is where a cradle with serial_port=bus listens; builds whose
+    // bus cannot share its port pass nullptr.
+    void start(const HotSyncServiceConfig &config, FileSystem &fs,
+               HotSyncBusPort *bus_port = nullptr);
     void stop();
     bool running() const { return _thread.joinable(); }
-    // True while the cradle holds the UART the platform bus would use.
-    bool owns_bus_uart() const { return _owns_bus_uart; }
     // One line describing the most recent sync, for the web UI.
     std::string last_result();
 
 private:
-    enum class Transport { NETSYNC, SERIAL_OVER_TCP, SERIAL };
+    enum class Transport { NETSYNC, SERIAL_OVER_TCP };
+    struct SerialCradle;
 
     void run();
     void open_listeners();
     void close_listeners();
     void poll_listener(fnTcpServer *server, Transport transport);
+    void open_cradle();
     void poll_serial();
-    void poll_cradle_hotsync();
-    void poll_cradle_app();
-    PalmAppStatus app_status() const;
+    void listen_for_hotsync(SerialCradle &cradle);
     void sync(HotSyncLink &link, Transport transport);
     HotSyncOptions session_options() const;
     void record(const HotSyncReport &report);
@@ -68,13 +71,12 @@ private:
     FileSystem *_fs = nullptr;
     std::thread _thread;
     std::atomic<bool> _stopping{false};
-    bool _owns_bus_uart = false;
+    HotSyncBusPort *_bus_port = nullptr;
     std::unique_ptr<fnTcpServer> _netsync_server;
     std::unique_ptr<fnTcpServer> _emulator_server;
     std::mutex _result_lock;
     std::string _last_result = "No HotSync yet";
 
-    struct SerialCradle;
     std::unique_ptr<SerialCradle> _cradle;
 };
 

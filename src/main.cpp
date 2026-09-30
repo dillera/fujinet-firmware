@@ -39,6 +39,9 @@
 #include "httpService.h"
 #include "HotSyncService.h"
 
+#include <atomic>
+#include <mutex>
+
 #ifdef ENABLE_CONSOLE
 #include "../lib/console/ESP32Console.h"
 using namespace ESP32Console;
@@ -125,8 +128,59 @@ static void heap_alloc_failed_hook(size_t size, uint32_t caps, const char *funct
 }
 #endif
 
-// Palm OS HotSync server; its cradle may take the platform bus UART.
+// Palm OS HotSync server; its cradle may share the platform bus port.
 static HotSyncService hotsync;
+
+#ifdef BUILD_RS232
+// Lends the RS232 bus port to a HotSync cradle between bus commands. The
+// main loop spins, so a waiting borrower raises `wanted` to get a turn.
+class Rs232HotSyncPort : public HotSyncBusPort
+{
+public:
+    std::mutex in_use;
+    std::atomic<bool> wanted{false};
+
+    void borrow() override
+    {
+        wanted = true;
+        in_use.lock();
+        wanted = false;
+        // The last reply must leave before the cradle changes the baud rate.
+        SYSTEM_BUS.port().flushOutput();
+    }
+    void give_back() override { in_use.unlock(); }
+    bool host_active() override
+    {
+        unsigned count = SYSTEM_BUS.packetsHandled();
+        unsigned long now = fnSystem.millis();
+        if (count != _seen_packets)
+        {
+            _seen_packets = count;
+            _last_packet_ms = now;
+        }
+        return now - _last_packet_ms < HOST_QUIET_MS;
+    }
+    IOChannel &channel() override { return SYSTEM_BUS.port(); }
+    uint32_t baud_rate() override { return SYSTEM_BUS.getBaudrate(); }
+    void set_baud_rate(uint32_t baud) override { SYSTEM_BUS.setBaudrate(baud); }
+
+private:
+    // Palm apps pause between requests while the user reads the screen.
+    static constexpr unsigned long HOST_QUIET_MS = 10000;
+    unsigned _seen_packets = 0;
+    unsigned long _last_packet_ms = 0;
+};
+static Rs232HotSyncPort rs232_hotsync_port;
+#endif
+
+static HotSyncBusPort *hotsync_bus_port()
+{
+#ifdef BUILD_RS232
+    return &rs232_hotsync_port;
+#else
+    return nullptr;
+#endif
+}
 
 // Initial setup
 #ifdef ESP_PLATFORM
@@ -260,9 +314,6 @@ void main_setup(int argc, char *argv[])
     // Load the device password (kept in flash, separate from the config file)
     fnPassword.setup();
 
-    if (Config.get_hotsync_enabled() && fnSDFAT.running())
-        hotsync.start(hotsync_config_from(Config), fnSDFAT);
-
 #ifdef CONFIG_USB_PICOBOOT_HOST_ENABLED
     fnPicoUpdater.bootCheck();
 #endif
@@ -352,9 +403,7 @@ void main_setup(int argc, char *argv[])
 
 #ifdef BUILD_RS232
     theFuji->setup();
-    // A Palm cradle on the RS-232 port turns the host bus off.
-    if (!hotsync.owns_bus_uart())
-        SYSTEM_BUS.setup();
+    SYSTEM_BUS.setup();
     SYSTEM_BUS.addDevice(theFuji, FUJI_DEVICEID::FUJINET);
     SYSTEM_BUS.addDevice(&platformClock, FUJI_DEVICEID::CLOCK); // APETime compatible, extended for additional return types
 
@@ -496,6 +545,10 @@ void main_setup(int argc, char *argv[])
     SYSTEM_BUS.setup();
 #endif
 
+    // After the bus is set up, since a cradle may share its port.
+    if (Config.get_hotsync_enabled() && fnSDFAT.running())
+        hotsync.start(hotsync_config_from(Config), fnSDFAT, hotsync_bus_port());
+
 #ifdef ESP_PLATFORM
   #ifdef DEBUG
     unsigned long endms = fnSystem.millis();
@@ -607,8 +660,16 @@ void fn_service_loop(void *param)
 #if !(defined(BUILD_ADAM) && defined(ESP_PLATFORM))
         // ESP ADAM services the bus in its own core-1 task; every other build
         // (including ADAM PC) services it here from the main loop.
-        if (!hotsync.owns_bus_uart())
+#ifdef BUILD_RS232
+        // A HotSync cradle may be holding the port for a window.
+        if (!rs232_hotsync_port.wanted && rs232_hotsync_port.in_use.try_lock())
+        {
             SYSTEM_BUS.service();
+            rs232_hotsync_port.in_use.unlock();
+        }
+#else
+        SYSTEM_BUS.service();
+#endif
 #endif
 
 #if defined(ESP_PLATFORM) && defined(DEBUG)

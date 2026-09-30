@@ -4,10 +4,8 @@
 #include "HotSyncLinks.h"
 #include "NetSyncTransport.h"
 #include "PadpTransport.h"
-#include "PalmAppChannel.h"
 
 #include "fnConfig.h"
-#include "fnSystem.h"
 #include "fnTcpServer.h"
 #include "fnWiFi.h"
 
@@ -27,46 +25,24 @@ static constexpr uint32_t HOTSYNC_TASK_STACK = 8192;
 // Identifies FujiNet as "the PC" a device last synced with ("FJNT").
 static constexpr uint32_t HOTSYNC_PC_ID = 0x464A4E54;
 
-// The cradle alternates between listening for a HotSync WAKEUP at 9600 baud
-// and for Palm app requests at PALM_APP_BAUD_RATE. A 9600-baud byte read at
-// 115200 arrives as a line break the UART drops, so it cannot be detected
-// from the faster rate. The device repeats its WAKEUP and the app repeats its
-// request for longer than one full cycle.
+// On the bus, the cradle takes the port for a HotSync window, then leaves it
+// to the bus for as long. The device repeats its WAKEUP for longer than one
+// full cycle, and a Palm app repeats its FujiBus request.
 static constexpr auto CRADLE_HOTSYNC_WINDOW = std::chrono::milliseconds(1500);
-static constexpr auto CRADLE_APP_WINDOW = std::chrono::milliseconds(1500);
-static constexpr uint32_t CRADLE_APP_READ_MS = 50;
-static constexpr size_t PALM_APP_MAX_LINE = 128;
+static constexpr auto CRADLE_BUS_WINDOW = std::chrono::milliseconds(1500);
 
-// On FujiNet-PC the cradle is a host serial device; on the ESP32 it is the
-// UART the platform bus would otherwise own (serial_port=bus).
-static ChannelConfig cradle_channel_config(const std::string &port)
-{
-    ChannelConfig config;
-    config.baud(PALM_APP_BAUD_RATE).readTimeout(10);
-#ifdef ESP_PLATFORM
-    (void)port;
-    // Without an RTS pin the channel skips hardware flow control, which
-    // would stall transmit, and still raises CTS so the device may send.
-    config.deviceID(FN_UART_BUS).rtsPin(-1);
-#else
-    config.deviceID(port);
-#endif
-    return config;
-}
-
-// A Palm cradle, time-sliced between HotSync and Palm apps.
+// A Palm cradle on a serial port: its own (FujiNet-PC) or the platform bus
+// port, borrowed one window at a time.
 struct HotSyncService::SerialCradle {
-    UARTChannel channel;
-    HotSyncSerialLink link{channel, channel};
-    std::unique_ptr<PadpTransport> padp;
-    std::string app_line;
-    bool listening_for_hotsync = false;
-    std::chrono::steady_clock::time_point window_end;
+    std::unique_ptr<UARTChannel> own_channel;
+    HotSyncBusPort *bus = nullptr;
+    std::unique_ptr<HotSyncSerialLink> link;
+    std::chrono::steady_clock::time_point next_window;
 
-    explicit SerialCradle(const std::string &port)
+    ~SerialCradle()
     {
-        channel.begin(cradle_channel_config(port));
-        listen_for_hotsync();
+        if (own_channel)
+            own_channel->end();
     }
 
     // IOChannel::discardInput() waits for the line to go quiet, which a
@@ -74,41 +50,10 @@ struct HotSyncService::SerialCradle {
     void drop_pending_input()
     {
         uint8_t scratch[64];
-        for (int i = 0; i < 64 && link.read(scratch, sizeof(scratch), 0) > 0; ++i)
+        for (int i = 0; i < 64 && link->read(scratch, sizeof(scratch), 0) > 0; ++i)
             ;
     }
-    ~SerialCradle() { channel.end(); }
-
-    void listen_for_hotsync()
-    {
-        listening_for_hotsync = true;
-        window_end = std::chrono::steady_clock::now() + CRADLE_HOTSYNC_WINDOW;
-        channel.setBaudrate(CMP_INITIAL_BAUD_RATE);
-        drop_pending_input();
-        link.take_received_count();
-        link.set_read_deadline(window_end);
-        padp = std::make_unique<PadpTransport>(link);
-    }
-
-    void listen_for_apps()
-    {
-        listening_for_hotsync = false;
-        window_end = std::chrono::steady_clock::now() + CRADLE_APP_WINDOW;
-        app_line.clear();
-        link.clear_read_deadline();
-        channel.setBaudrate(PALM_APP_BAUD_RATE);
-        drop_pending_input();
-    }
-
-    void next_window()
-    {
-        if (listening_for_hotsync)
-            listen_for_apps();
-        else
-            listen_for_hotsync();
-    }
 };
-
 
 HotSyncServiceConfig hotsync_config_from(fnConfig &config)
 {
@@ -131,16 +76,15 @@ HotSyncService::~HotSyncService()
     stop();
 }
 
-void HotSyncService::start(const HotSyncServiceConfig &config, FileSystem &fs)
+void HotSyncService::start(const HotSyncServiceConfig &config, FileSystem &fs,
+                           HotSyncBusPort *bus_port)
 {
     if (running())
         return;
     _config = config;
     _fs = &fs;
+    _bus_port = bus_port;
     _stopping = false;
-#ifdef ESP_PLATFORM
-    _owns_bus_uart = _config.serial_port == "bus";
-#endif
 #ifdef ESP_PLATFORM
     // Core 1 belongs to fnLoop, which never blocks at a higher priority.
     esp_pthread_cfg_t cfg = esp_pthread_get_default_config();
@@ -164,7 +108,6 @@ void HotSyncService::stop()
         return;
     _stopping = true;
     _thread.join();
-    _owns_bus_uart = false;
 }
 
 std::string HotSyncService::last_result()
@@ -175,11 +118,8 @@ std::string HotSyncService::last_result()
 
 void HotSyncService::run()
 {
-    if (!_config.serial_port.empty())
-    {
-        _cradle = std::make_unique<SerialCradle>(_config.serial_port);
-        Debug_printf("HotSync: cradle open on %s\r\n", _config.serial_port.c_str());
-    }
+    HotSyncFsStorage(*_fs, _config.root).create_install_folder();
+    open_cradle();
     while (!_stopping)
     {
         if (fnWiFi.connected())
@@ -223,75 +163,94 @@ void HotSyncService::poll_listener(fnTcpServer *server, Transport transport)
     sync(link, transport);
 }
 
-void HotSyncService::poll_serial()
+void HotSyncService::open_cradle()
 {
-    if (!_cradle)
+    if (_config.serial_port.empty())
         return;
-    if (std::chrono::steady_clock::now() >= _cradle->window_end)
-        _cradle->next_window();
-    if (_cradle->listening_for_hotsync)
-        poll_cradle_hotsync();
+
+    auto cradle = std::make_unique<SerialCradle>();
+    if (_config.serial_port == HOTSYNC_BUS_SERIAL_PORT)
+    {
+        if (_bus_port == nullptr)
+        {
+            Debug_printf("HotSync: this build has no bus port to share with a cradle\r\n");
+            return;
+        }
+        HotSyncBusPort *bus = _bus_port;
+        cradle->bus = bus;
+        cradle->link = std::make_unique<HotSyncSerialLink>(
+            bus->channel(), [bus](uint32_t baud) { bus->set_baud_rate(baud); });
+    }
     else
-        poll_cradle_app();
+    {
+#ifdef ESP_PLATFORM
+        Debug_printf("HotSync: a cradle here must use serial_port=%s\r\n", HOTSYNC_BUS_SERIAL_PORT);
+        return;
+#else
+        cradle->own_channel = std::make_unique<UARTChannel>();
+        UARTChannel &channel = *cradle->own_channel;
+        channel.begin(ChannelConfig()
+                          .baud(CMP_INITIAL_BAUD_RATE)
+                          .deviceID(_config.serial_port)
+                          .readTimeout(10));
+        cradle->link = std::make_unique<HotSyncSerialLink>(
+            channel, [&channel](uint32_t baud) { channel.setBaudrate(baud); });
+#endif
+    }
+    Debug_printf("HotSync: cradle on %s\r\n", _config.serial_port.c_str());
+    _cradle = std::move(cradle);
 }
 
-void HotSyncService::poll_cradle_hotsync()
+void HotSyncService::poll_serial()
 {
-    // accept() gives up after ~1s without a WAKEUP.
-    if (_cradle->padp->accept().is_error())
+    if (!_cradle || std::chrono::steady_clock::now() < _cradle->next_window)
+        return;
+
+    SerialCradle &cradle = *_cradle;
+    if (cradle.bus == nullptr)
     {
-        if (size_t count = _cradle->link.take_received_count())
+        listen_for_hotsync(cradle);
+        return;
+    }
+
+    if (cradle.bus->host_active())
+    {
+        cradle.next_window = std::chrono::steady_clock::now() + CRADLE_BUS_WINDOW;
+        return;
+    }
+    cradle.bus->borrow();
+    uint32_t bus_baud = cradle.bus->baud_rate();
+    listen_for_hotsync(cradle);
+    cradle.link->set_baud_rate(bus_baud);
+    cradle.drop_pending_input();
+    cradle.bus->give_back();
+    cradle.next_window = std::chrono::steady_clock::now() + CRADLE_BUS_WINDOW;
+}
+
+void HotSyncService::listen_for_hotsync(SerialCradle &cradle)
+{
+    auto deadline = std::chrono::steady_clock::now() + CRADLE_HOTSYNC_WINDOW;
+    cradle.link->set_baud_rate(CMP_INITIAL_BAUD_RATE);
+    cradle.drop_pending_input();
+    cradle.link->take_received_count();
+    cradle.link->set_read_deadline(deadline);
+
+    PadpTransport padp(*cradle.link);
+    success_is_true woke = padp.accept();
+    while (woke.is_error() && std::chrono::steady_clock::now() < deadline)
+        woke = padp.accept();
+    // A sync takes as long as it takes; only the WAKEUP wait is windowed.
+    cradle.link->clear_read_deadline();
+
+    if (woke.is_error())
+    {
+        if (size_t count = cradle.link->take_received_count())
             Debug_printf("HotSync: %u bytes from the cradle at 9600 baud, no WAKEUP\r\n",
                          static_cast<unsigned>(count));
         return;
     }
-    // A sync takes as long as it takes; only the WAKEUP wait is windowed.
-    _cradle->link.clear_read_deadline();
     HotSyncFsStorage storage(*_fs, _config.root);
-    record(HotSyncSession(*_cradle->padp, storage, session_options()).run());
-    _cradle->listen_for_hotsync();
-}
-
-void HotSyncService::poll_cradle_app()
-{
-    uint8_t buf[64];
-    int got = _cradle->link.read(buf, sizeof(buf), CRADLE_APP_READ_MS);
-    if (got > 0)
-        Debug_printf("HotSync: %d bytes from the cradle at %lu baud\r\n", got,
-                     static_cast<unsigned long>(PALM_APP_BAUD_RATE));
-    for (int i = 0; i < got; ++i)
-    {
-        if (buf[i] == '\r')
-            continue;
-        if (buf[i] != '\n')
-        {
-            if (_cradle->app_line.size() < PALM_APP_MAX_LINE)
-                _cradle->app_line += static_cast<char>(buf[i]);
-            continue;
-        }
-        std::string reply = palm_app_reply(_cradle->app_line, app_status());
-        Debug_printf("HotSync: Palm app sent \"%s\"\r\n", _cradle->app_line.c_str());
-        _cradle->app_line.clear();
-        if (!reply.empty())
-            _cradle->link.write(reinterpret_cast<const uint8_t *>(reply.data()), reply.size());
-    }
-}
-
-PalmAppStatus HotSyncService::app_status() const
-{
-    PalmAppStatus status;
-    status.version = fnSystem.get_fujinet_version(true);
-    status.ip = fnSystem.Net.get_ip4_address_str();
-    status.ssid = fnWiFi.get_current_ssid();
-
-    char when[32] = "Clock not set";
-    std::time_t now = std::time(nullptr);
-    std::tm local{};
-    localtime_r(&now, &local);
-    if (local.tm_year + 1900 >= 2020)
-        std::strftime(when, sizeof(when), "%Y-%m-%d %H:%M", &local);
-    status.time = when;
-    return status;
+    record(HotSyncSession(padp, storage, session_options()).run());
 }
 
 void HotSyncService::sync(HotSyncLink &link, Transport transport)
