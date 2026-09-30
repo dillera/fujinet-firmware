@@ -22,7 +22,8 @@ serial_port=          ; a cradle: "bus" on the ESP32, a device path on FujiNet-P
 ```
 
 `serial_port=bus` gives the cradle the UART the platform bus would use, so the
-bus is not started.
+bus is not started. The `fujinet-rs232-s3-palm` board builds the FN-RS232 this
+way by default; connect the cradle to its DB-9 through a null modem.
 
 The SD card layout, under `/palm`:
 
