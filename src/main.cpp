@@ -37,6 +37,7 @@
 #include "fnLedStrip.h"
 
 #include "httpService.h"
+#include "HotSyncService.h"
 
 #ifdef ENABLE_CONSOLE
 #include "../lib/console/ESP32Console.h"
@@ -123,6 +124,9 @@ static void heap_alloc_failed_hook(size_t size, uint32_t caps, const char *funct
                    (unsigned)esp_get_free_internal_heap_size(), (unsigned)esp_get_free_heap_size());
 }
 #endif
+
+// Palm OS HotSync server; its cradle may take the platform bus UART.
+static HotSyncService hotsync;
 
 // Initial setup
 #ifdef ESP_PLATFORM
@@ -256,6 +260,9 @@ void main_setup(int argc, char *argv[])
     // Load the device password (kept in flash, separate from the config file)
     fnPassword.setup();
 
+    if (Config.get_hotsync_enabled() && fnSDFAT.running())
+        hotsync.start(hotsync_config_from(Config), fnSDFAT);
+
 #ifdef CONFIG_USB_PICOBOOT_HOST_ENABLED
     fnPicoUpdater.bootCheck();
 #endif
@@ -345,7 +352,9 @@ void main_setup(int argc, char *argv[])
 
 #ifdef BUILD_RS232
     theFuji->setup();
-    SYSTEM_BUS.setup();
+    // A Palm cradle on the RS-232 port turns the host bus off.
+    if (!hotsync.owns_bus_uart())
+        SYSTEM_BUS.setup();
     SYSTEM_BUS.addDevice(theFuji, FUJI_DEVICEID::FUJINET);
     SYSTEM_BUS.addDevice(&platformClock, FUJI_DEVICEID::CLOCK); // APETime compatible, extended for additional return types
 
@@ -598,7 +607,8 @@ void fn_service_loop(void *param)
 #if !(defined(BUILD_ADAM) && defined(ESP_PLATFORM))
         // ESP ADAM services the bus in its own core-1 task; every other build
         // (including ADAM PC) services it here from the main loop.
-        SYSTEM_BUS.service();
+        if (!hotsync.owns_bus_uart())
+            SYSTEM_BUS.service();
 #endif
 
 #if defined(ESP_PLATFORM) && defined(DEBUG)
