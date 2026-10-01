@@ -151,13 +151,20 @@ public:
     void give_back() override { in_use.unlock(); }
     bool host_active() override
     {
-        unsigned count = SYSTEM_BUS.packetsHandled();
+        unsigned packets = SYSTEM_BUS.packetsHandled();
+        unsigned stray = SYSTEM_BUS.strayBytes();
         unsigned long now = fnSystem.millis();
-        if (count != _seen_packets)
+        if (packets != _seen_packets)
         {
-            _seen_packets = count;
+            _seen_packets = packets;
             _last_packet_ms = now;
         }
+        else if (stray != _seen_stray)
+        {
+            // Noise and no packets: the device has left its app to HotSync.
+            _last_packet_ms = now - HOST_QUIET_MS;
+        }
+        _seen_stray = stray;
         return now - _last_packet_ms < HOST_QUIET_MS;
     }
     IOChannel &channel() override { return SYSTEM_BUS.port(); }
@@ -165,9 +172,11 @@ public:
     void set_baud_rate(uint32_t baud) override { SYSTEM_BUS.setBaudrate(baud); }
 
 private:
-    // Palm apps pause between requests while the user reads the screen.
-    static constexpr unsigned long HOST_QUIET_MS = 10000;
+    // Palm apps pause between requests, some refreshing every few tens of
+    // seconds; a HotSync start cuts this short (see host_active).
+    static constexpr unsigned long HOST_QUIET_MS = 60000;
     unsigned _seen_packets = 0;
+    unsigned _seen_stray = 0;
     unsigned long _last_packet_ms = 0;
 };
 static Rs232HotSyncPort rs232_hotsync_port;
