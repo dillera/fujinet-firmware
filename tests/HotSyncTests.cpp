@@ -103,6 +103,22 @@ TEST_CASE("CMP handshake reproduces the captured exchange and raises the baud ra
     CHECK(link.baud == 115200);
 }
 
+TEST_CASE("Waiting for WAKEUP stops before INIT, so a cradle can lift its listening deadline")
+{
+    ScriptedLink link;
+    link.reads.push_back(hex(PALM_WAKEUP));
+    link.reads.push_back(hex(PALM_ACK_OF_INIT));
+
+    PadpTransport padp(link);
+    REQUIRE(padp.wait_for_wakeup().is_success());
+    CHECK(link.written == hex(HOST_ACK_OF_WAKEUP));
+    CHECK(link.reads.size() == 1);
+
+    REQUIRE(padp.answer_wakeup().is_success());
+    CHECK(link.reads.empty());
+    CHECK(link.baud == 115200);
+}
+
 TEST_CASE("A retransmitted WAKEUP is not taken as the ACK of our INIT")
 {
     // WAKEUP, the same WAKEUP again (our ACK was "lost"), then the real ACK.

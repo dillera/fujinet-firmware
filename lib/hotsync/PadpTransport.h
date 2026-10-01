@@ -20,7 +20,11 @@ class PadpTransport : public DlpTransport
 public:
     PadpTransport(HotSyncLink &link, uint32_t max_baud_rate = CMP_MAX_BAUD_RATE);
 
+    // accept() is wait_for_wakeup() then answer_wakeup(). A cradle that only
+    // listens for a while bounds the first, never the second.
     success_is_true accept() override;
+    success_is_true wait_for_wakeup();
+    success_is_true answer_wakeup();
     success_is_true send(const ByteBuffer &message) override;
     success_is_true receive(ByteBuffer &message, uint32_t timeout_ms) override;
 
@@ -50,6 +54,7 @@ private:
     uint32_t _max_baud_rate;
     uint32_t _baud_rate = CMP_INITIAL_BAUD_RATE;
     uint8_t _next_xid = 1;
+    uint32_t _wakeup_baud_rate = 0;
 
     ByteBuffer _assembling;
     uint32_t _assembling_size = 0;

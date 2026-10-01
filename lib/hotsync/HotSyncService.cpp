@@ -236,11 +236,14 @@ void HotSyncService::listen_for_hotsync(SerialCradle &cradle)
     cradle.link->set_read_deadline(deadline);
 
     PadpTransport padp(*cradle.link);
-    success_is_true woke = padp.accept();
+    success_is_true woke = padp.wait_for_wakeup();
     while (woke.is_error() && std::chrono::steady_clock::now() < deadline)
-        woke = padp.accept();
-    // A sync takes as long as it takes; only the WAKEUP wait is windowed.
+        woke = padp.wait_for_wakeup();
+    // Only the WAKEUP wait is windowed. A WAKEUP late in the window still
+    // needs the Palm's ACK of our INIT, and the sync takes as long as it takes.
     cradle.link->clear_read_deadline();
+    if (woke.is_success())
+        woke = padp.answer_wakeup();
 
     if (woke.is_error())
     {

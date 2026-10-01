@@ -46,6 +46,13 @@ PadpTransport::PadpTransport(HotSyncLink &link, uint32_t max_baud_rate)
 
 success_is_true PadpTransport::accept()
 {
+    if (wait_for_wakeup().is_error())
+        RETURN_ERROR_AS_FALSE();
+    return answer_wakeup();
+}
+
+success_is_true PadpTransport::wait_for_wakeup()
+{
     ByteBuffer message;
     if (receive(message, CMP_WAKEUP_WAIT_MS).is_error())
         RETURN_ERROR_AS_FALSE();
@@ -59,8 +66,13 @@ success_is_true PadpTransport::accept()
         Debug_printf("HotSync: expected CMP WAKEUP, got type %u\r\n", wakeup.type);
         RETURN_ERROR_AS_FALSE();
     }
+    _wakeup_baud_rate = wakeup.baud_rate;
+    RETURN_SUCCESS_AS_TRUE();
+}
 
-    uint32_t baud = std::min<uint32_t>(wakeup.baud_rate, _max_baud_rate);
+success_is_true PadpTransport::answer_wakeup()
+{
+    uint32_t baud = std::min<uint32_t>(_wakeup_baud_rate, _max_baud_rate);
     bool change_baud = baud != CMP_INITIAL_BAUD_RATE;
 
     CmpPacket init{};
