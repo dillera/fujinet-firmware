@@ -40,8 +40,9 @@ is a line break the UART drops, so the two cannot share one rate. The service
 borrows the bus port for 1.5 s at 9600 to catch a WAKEUP, then gives it back to
 the bus for 1.5 s (`HotSyncBusPort.h`). In between, a Palm app talks to FujiNet
 with FujiBus, like any RS232 host. The device repeats its WAKEUP for longer
-than one cycle. A Palm running an app cannot HotSync, so while FujiBus packets
-keep arriving the service leaves the port to the bus entirely.
+than one cycle. A Palm running an app cannot HotSync, so for a minute after the last FujiBus
+packet the service leaves the port to the bus, unless bytes that are not
+FujiBus arrive with no packets, which is what a HotSync start looks like.
 
 ## Layout
 
