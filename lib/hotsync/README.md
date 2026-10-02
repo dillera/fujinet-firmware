@@ -46,13 +46,14 @@ databases are backed up there.
   DatebookDB, one way:
   - an event becomes an appointment; an all-day event an untimed one, repeating daily when it
     spans days; one that runs past midnight stops at 23:59; the location goes in the note;
-  - an event that changes is rewritten, and one that is cancelled is deleted;
+  - an event that changes is rewritten, and one that is cancelled is deleted, unless the copy was
+    edited on the Palm;
   - appointments made on the Palm are never touched, and neither is a copied one that was edited
     on the Palm and then cancelled in the calendar.
   Times are shown in `[General] timezone`; with none set, the service reads the Palm's offset from
   UTC off its clock.
 - On the SD card, `/palm/install/` holds files to install on the next sync, `/palm/installed/`
-  the ones already installed, `/palm/backup/<user>/` the backups, and `/palm/state/<user>/datebook.map`
+  the ones already installed, `/palm/backup/<user>/` the backups, and `/palm/state/<user>-<id>/datebook.map`
   the Date Book records the calendar made.
 - Everything up to `HotSyncSession` depends only on `include/global_types.h` and `fn_time`;
   `tests/HotSyncTests.cpp` drives it with frames captured from a Palm OS 3.3 device and with a fake

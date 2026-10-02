@@ -24,6 +24,8 @@ public:
     virtual success_is_true mark_installed(const std::string &file_name) = 0;
     virtual success_is_true write_backup(const std::string &user, const std::string &file_name,
                                          const ByteBuffer &data) = 0;
+    // A state file that does not exist yet reads as empty; an error means it
+    // exists but could not be read.
     virtual success_is_true read_state(const std::string &user, const std::string &name,
                                        ByteBuffer &out) = 0;
     virtual success_is_true write_state(const std::string &user, const std::string &name,

@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <mutex>
 
 #include "../../include/debug.h"
 #include "../config/fnConfig.h"
@@ -61,8 +62,10 @@ std::string dashed(const std::string &s)
 }
 
 // The single cached window. Function-local statics avoid static-init ordering.
+// The N: device and the HotSync service read calendars on different threads.
 struct CalCache
 {
+    std::mutex lock;
     std::string key;
     int64_t     stamp = 0;
     std::vector<CalendarEventEntry> items;
@@ -79,6 +82,7 @@ CalCache &window_cache()
 void clear_window_cache()
 {
     CalCache &c = window_cache();
+    std::lock_guard<std::mutex> guard(c.lock);
     c.key.clear();
     c.items.clear();
     c.items.shrink_to_fit();
@@ -513,11 +517,14 @@ fujiError_t NetworkProtocolCalendar::fetch_events(std::vector<CalendarEventEntry
                             std::to_string((int)_view);
     const int64_t now = (int64_t)time(nullptr);
 
-    if (cache.key == key && now - cache.stamp <= CAL_CACHE_TTL)
     {
-        Debug_printf("Calendar: window cache hit (%u events)\r\n", (unsigned)cache.items.size());
-        out = cache.items;
-        return FUJI_ERROR::NONE;
+        std::lock_guard<std::mutex> guard(cache.lock);
+        if (cache.key == key && now - cache.stamp <= CAL_CACHE_TTL)
+        {
+            Debug_printf("Calendar: window cache hit (%u events)\r\n", (unsigned)cache.items.size());
+            out = cache.items;
+            return FUJI_ERROR::NONE;
+        }
     }
 
     size_t cap = (_view == CalendarView::AGENDA) ? _count : (size_t)CAL_MAX_EVENTS;
@@ -545,6 +552,7 @@ fujiError_t NetworkProtocolCalendar::fetch_events(std::vector<CalendarEventEntry
     for (size_t i = 0; i < out.size(); i++)
         out[i].eventNum = (uint32_t)(i + 1);
 
+    std::lock_guard<std::mutex> guard(cache.lock);
     if (out.size() <= CAL_CACHE_MAX_EVENTS)
     {
         cache.key = key;

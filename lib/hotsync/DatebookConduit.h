@@ -2,12 +2,13 @@
 #define HOTSYNC_DATEBOOK_CONDUIT_H
 
 // Copies calendar events into the Palm Date Book, one way. Each event FujiNet
-// adds is remembered (record ID and contents) in state/<user>/datebook.map, so
+// adds is remembered (record ID and contents) in state/<user>-<id>/datebook.map, so
 // a later sync updates or removes only those records:
-//   - an event that changed is rewritten, even over an edit made on the Palm;
+//   - an event that changed is rewritten, unless it was edited on the Palm;
 //   - an event that is gone is deleted, unless it was edited on the Palm;
 //   - a record deleted on the Palm is added again while the event lasts.
-// Appointments made on the Palm are never touched.
+// Appointments made on the Palm are never touched. Without a readable map it
+// changes nothing, since adding would copy every event again.
 
 #include "Datebook.h"
 #include "DlpClient.h"
@@ -56,8 +57,8 @@ private:
         std::string uid;
     };
 
-    std::vector<Mapping> load_map();
-    void save_map(const std::vector<Mapping> &map);
+    success_is_true load_map(std::vector<Mapping> &map);
+    success_is_true save_map(const std::vector<Mapping> &map);
 
     DlpClient &_dlp;
     HotSyncStorage &_storage;

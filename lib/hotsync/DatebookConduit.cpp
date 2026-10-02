@@ -10,6 +10,8 @@
 static constexpr const char *MAP_NAME = "datebook.map";
 static constexpr const char *MAP_VERSION = "datebook-map 1";
 static constexpr int64_t SECONDS_PER_DAY = 86400;
+// How long a record of a past event stays in the map once it leaves the window.
+static constexpr int64_t MAP_KEEP_PAST = 60 * SECONDS_PER_DAY;
 
 static uint32_t fnv1a(const ByteBuffer &data)
 {
@@ -93,50 +95,100 @@ fn_time::PosixTz datebook_zone_from_offset(int offset_seconds)
     return tz;
 }
 
-std::vector<DatebookConduit::Mapping> DatebookConduit::load_map()
+// Uids are written percent-encoded, so spaces and line breaks survive.
+static std::string encode_uid(const std::string &uid)
 {
-    std::vector<Mapping> map;
+    static const char *HEX = "0123456789ABCDEF";
+    std::string out;
+    for (unsigned char c : uid)
+    {
+        if (c <= ' ' || c == '%' || c >= 0x7F)
+        {
+            out += '%';
+            out += HEX[c >> 4];
+            out += HEX[c & 0x0F];
+        }
+        else
+            out += static_cast<char>(c);
+    }
+    return out;
+}
+
+static std::string decode_uid(const std::string &text)
+{
+    std::string out;
+    for (size_t i = 0; i < text.size(); ++i)
+    {
+        if (text[i] == '%' && i + 2 < text.size())
+        {
+            out += static_cast<char>(std::strtol(text.substr(i + 1, 2).c_str(), nullptr, 16));
+            i += 2;
+        }
+        else
+            out += text[i];
+    }
+    return out;
+}
+
+success_is_true DatebookConduit::load_map(std::vector<Mapping> &map)
+{
+    map.clear();
     ByteBuffer data;
     if (_storage.read_state(_user, MAP_NAME, data).is_error())
-        return map;
+        RETURN_ERROR_AS_FALSE();
+    if (data.empty())
+        RETURN_SUCCESS_AS_TRUE(); // never synced
     std::istringstream in(std::string(data.begin(), data.end()));
     std::string line;
     if (!std::getline(in, line) || line != MAP_VERSION)
-        return map;
+        RETURN_ERROR_AS_FALSE();
     while (std::getline(in, line))
     {
         std::istringstream fields(line);
         Mapping m;
         unsigned long id, hash;
         long long start;
-        if (!(fields >> std::hex >> id >> hash >> std::dec >> start))
-            continue;
-        std::getline(fields >> std::ws, m.uid);
-        if (m.uid.empty())
+        std::string uid;
+        if (!(fields >> std::hex >> id >> hash >> std::dec >> start >> uid))
             continue;
         m.record_id = static_cast<uint32_t>(id);
         m.hash = static_cast<uint32_t>(hash);
         m.start = start;
+        m.uid = decode_uid(uid);
         map.push_back(m);
     }
-    return map;
+    RETURN_SUCCESS_AS_TRUE();
 }
 
-void DatebookConduit::save_map(const std::vector<Mapping> &map)
+success_is_true DatebookConduit::save_map(const std::vector<Mapping> &map)
 {
     std::ostringstream out;
     out << MAP_VERSION << "\n";
     for (const Mapping &m : map)
         out << std::hex << m.record_id << " " << m.hash << " " << std::dec << m.start << " "
-            << m.uid << "\n";
+            << encode_uid(m.uid) << "\n";
     std::string text = out.str();
-    if (_storage.write_state(_user, MAP_NAME, ByteBuffer(text.begin(), text.end())).is_error())
-        Debug_printf("HotSync: could not save %s\r\n", MAP_NAME);
+    return _storage.write_state(_user, MAP_NAME, ByteBuffer(text.begin(), text.end()));
+}
+
+// Whether a ReadRecord result means the record is no longer on the Palm.
+static bool gone_from_palm(DlpError read, const DlpRecord &record)
+{
+    return read == DlpError::NOT_FOUND || read == DlpError::RECORD_DELETED ||
+           (read == DlpError::NONE && (record.attributes & DLP_RECORD_DELETED));
 }
 
 DlpError DatebookConduit::sync(const std::vector<HotSyncEvent> &events,
                                const DatebookSyncOptions &options, DatebookSyncReport &report)
 {
+    // Without the map, adding events would copy them all again.
+    std::vector<Mapping> old_map;
+    if (load_map(old_map).is_error())
+    {
+        Debug_printf("HotSync: cannot read %s, Date Book left alone\r\n", MAP_NAME);
+        return DlpError::NOT_FOUND;
+    }
+
     uint8_t db = 0;
     DlpError err = _dlp.open_db(DATEBOOK_DB_NAME, DLP_OPEN_READ | DLP_OPEN_WRITE, db);
     if (err != DlpError::NONE)
@@ -153,64 +205,75 @@ DlpError DatebookConduit::sync(const std::vector<HotSyncEvent> &events,
     }
     std::vector<bool> handled(events.size(), false);
 
-    std::vector<Mapping> old_map = load_map();
     std::vector<Mapping> map;
     size_t next = 0;
     for (; next < old_map.size() && err == DlpError::NONE; ++next)
     {
         Mapping m = old_map[next];
-        if (m.start < options.from || m.start >= options.to)
+        auto found = by_uid.find(m.uid);
+        bool listed = found != by_uid.end() && !handled[found->second];
+        bool in_window = m.start >= options.from && m.start < options.to;
+        if (!listed && !in_window)
         {
-            map.push_back(m);
+            // Not fetched this time, so not known to be cancelled. Long past
+            // records are forgotten; they stay on the Palm.
+            if (m.start >= options.from - MAP_KEEP_PAST)
+                map.push_back(m);
             continue;
         }
 
         DlpRecord record;
         DlpError read = _dlp.read_record_by_id(db, m.record_id, record);
-        if (read == DlpError::NOT_FOUND ||
-            (read == DlpError::NONE && (record.attributes & DLP_RECORD_DELETED)))
-            continue; // deleted on the Palm
-        if (read != DlpError::NONE)
+        if (read == DlpError::TRANSPORT)
         {
+            err = read;
             map.push_back(m);
-            if (read == DlpError::TRANSPORT)
-                err = read;
-            continue;
+            break;
         }
+        bool ours = read == DlpError::NONE && fnv1a(record.data) == m.hash;
 
-        auto found = by_uid.find(m.uid);
-        if (found == by_uid.end())
+        if (!listed)
         {
-            if (fnv1a(record.data) == m.hash)
+            // Cancelled: delete the record unless it was changed on the Palm.
+            if (ours)
             {
-                err = _dlp.delete_record(db, m.record_id);
-                if (err == DlpError::NONE)
-                    report.deleted++;
-                else if (err != DlpError::TRANSPORT)
-                    err = DlpError::NONE;
+                DlpError del = _dlp.delete_record(db, m.record_id);
+                if (del == DlpError::TRANSPORT)
+                    err = del;
+                if (del != DlpError::NONE)
+                {
+                    map.push_back(m); // try again next time
+                    continue;
+                }
+                report.deleted++;
             }
             continue;
         }
 
         size_t i = found->second;
+        if (gone_from_palm(read, record))
+            continue; // deleted on the Palm; added again below
         handled[i] = true;
-        if (hashes[i] != m.hash)
+        if (read != DlpError::NONE)
+        {
+            map.push_back(m); // unreadable for now; leave it be
+            continue;
+        }
+        if (hashes[i] != m.hash && ours)
         {
             DlpRecord rewrite;
             rewrite.id = m.record_id;
             rewrite.data = packed[i];
             uint32_t id = 0;
             err = _dlp.write_record(db, rewrite, id);
-            if (err != DlpError::NONE)
+            if (err == DlpError::NONE)
             {
-                map.push_back(m);
-                continue;
+                m.hash = hashes[i];
+                report.updated++;
             }
-            m.hash = hashes[i];
-            report.updated++;
         }
         else
-            report.unchanged++;
+            report.unchanged++; // the same, or edited on the Palm and kept
         m.start = events[i].start;
         map.push_back(m);
     }
@@ -232,7 +295,8 @@ DlpError DatebookConduit::sync(const std::vector<HotSyncEvent> &events,
         report.added++;
     }
 
-    save_map(map);
+    if (save_map(map).is_error())
+        Debug_printf("HotSync: could not save %s\r\n", MAP_NAME);
     DlpError closed = _dlp.close_db(db);
     return err != DlpError::NONE ? err : closed;
 }

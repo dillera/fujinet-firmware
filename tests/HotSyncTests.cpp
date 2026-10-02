@@ -458,9 +458,7 @@ public:
                                ByteBuffer &out) override
     {
         auto found = state.find(user + "/" + name);
-        if (found == state.end())
-            RETURN_ERROR_AS_FALSE();
-        out = found->second;
+        out = found == state.end() ? ByteBuffer() : found->second;
         RETURN_SUCCESS_AS_TRUE();
     }
     success_is_true write_state(const std::string &user, const std::string &name,
@@ -698,4 +696,69 @@ TEST_CASE("A sync copies calendar events into the Date Book")
     CHECK(appt.start_hour == 9); // the Palm's clock says it is UTC-4
     CHECK(std::find(palm.log.begin(), palm.log.end(),
                     "Date Book: 1 added, 0 updated, 0 removed\n") != palm.log.end());
+}
+
+TEST_CASE("Events at the edges of the window are not copied twice")
+{
+    FakePalm palm;
+    MemoryStorage storage;
+    DlpClient dlp(palm);
+    DatebookConduit conduit(dlp, storage, "Bob");
+    DatebookSyncOptions options;
+    REQUIRE(options.tz.parse(NEW_YORK));
+    int64_t now = fn_time::fn_timegm(2026, 10, 1, 12, 0, 0);
+    options.from = now;
+    options.to = now + 10 * 86400;
+
+    // One began before the window and overlaps it; one's uid has a space.
+    std::vector<HotSyncEvent> events = {timed_event("early", "Conference", now - 3600, 600),
+                                        timed_event("odd uid", "Call", now + 7200, 30)};
+    for (int run = 0; run < 3; ++run)
+    {
+        DatebookSyncReport report;
+        REQUIRE(conduit.sync(events, options, report) == DlpError::NONE);
+        CHECK(report.added == (run == 0 ? 2 : 0));
+    }
+    CHECK(palm.datebook.size() == 2);
+}
+
+TEST_CASE("A copy edited on the Palm is kept when its event changes")
+{
+    FakePalm palm;
+    MemoryStorage storage;
+    DlpClient dlp(palm);
+    DatebookConduit conduit(dlp, storage, "Carol");
+    DatebookSyncOptions options;
+    int64_t now = fn_time::fn_timegm(2026, 10, 1, 12, 0, 0);
+    options.from = now - 86400;
+    options.to = now + 86400;
+
+    std::vector<HotSyncEvent> events = {timed_event("a", "Review", now, 60)};
+    DatebookSyncReport report;
+    REQUIRE(conduit.sync(events, options, report) == DlpError::NONE);
+    REQUIRE(palm.datebook.size() == 1);
+    ByteBuffer edited = hex("0C000D00F5410400456469746564206F6E2050616C6D00");
+    palm.datebook.begin()->second.data = edited;
+
+    events[0].summary = "Review (moved room)";
+    report = DatebookSyncReport();
+    REQUIRE(conduit.sync(events, options, report) == DlpError::NONE);
+    CHECK(report.updated == 0);
+    CHECK(palm.datebook.begin()->second.data == edited);
+}
+
+TEST_CASE("An unreadable map leaves the Date Book alone")
+{
+    FakePalm palm;
+    MemoryStorage storage;
+    storage.state["Dave/datebook.map"] = hex("6761726261676500"); // not a map
+    DlpClient dlp(palm);
+    DatebookConduit conduit(dlp, storage, "Dave");
+    DatebookSyncOptions options;
+    int64_t now = fn_time::fn_timegm(2026, 10, 1, 12, 0, 0);
+    options.from = now - 86400;
+    options.to = now + 86400;
+    DatebookSyncReport report;
+    CHECK(conduit.sync({timed_event("a", "Review", now, 60)}, options, report) != DlpError::NONE);
+    CHECK(palm.datebook.empty());
 }

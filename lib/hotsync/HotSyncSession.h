@@ -67,6 +67,7 @@ private:
     DlpError install_file(const std::string &file_name);
     DlpError write_database(const PalmDatabase &db);
     DlpError write_contents(uint8_t handle, const PalmDatabase &db);
+    DlpError read_palm_zone();
     DlpError sync_datebook();
     DlpError backup_databases();
     DlpError backup_database(const DlpDbInfo &info);
@@ -82,6 +83,7 @@ private:
     bool _user_is_new = false;
     bool _reset_after_sync = false;
     HotSyncReport _report;
+    fn_time::PosixTz _palm_tz;
 };
 
 // Device names can hold characters a FAT file name cannot.

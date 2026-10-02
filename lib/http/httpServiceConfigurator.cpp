@@ -539,8 +539,16 @@ void fnHttpServiceConfigurator::config_cpm_enabled(std::string cpm_enabled)
 
 // The Google Account form's own-client fields; "default" returns to the
 // project's client. Changing client drops the grant.
+// A line break would start a new line, or section, of fnconfig.ini.
+static bool one_line(const std::string &value)
+{
+    return value.find_first_of("\r\n") == std::string::npos;
+}
+
 void fnHttpServiceConfigurator::config_gdrive_client(const std::string &key, const std::string &value)
 {
+    if (!one_line(value))
+        return;
     bool reset = strcasecmp(value.c_str(), "default") == 0;
     if (key == "gdrive_client_id")
         Config.store_gdrive_client(reset ? "" : value, reset ? "" : Config.get_gdrive_client_secret());
@@ -553,6 +561,8 @@ void fnHttpServiceConfigurator::config_gdrive_client(const std::string &key, con
 // posted, so "off" clears the calendar.
 void fnHttpServiceConfigurator::config_hotsync(const std::string &key, const std::string &value)
 {
+    if (!one_line(value))
+        return;
     if (key == "hotsync_enabled")
         Config.store_hotsync_enabled(atoi(value.c_str()) != 0);
     else if (key == "hotsync_user")

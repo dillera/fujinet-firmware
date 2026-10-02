@@ -97,11 +97,27 @@ success_is_true HotSyncFsStorage::write_backup(const std::string &user, const st
 success_is_true HotSyncFsStorage::read_state(const std::string &user, const std::string &name,
                                              ByteBuffer &out)
 {
-    return read_file(path("state/" + user, name), out);
+    out.clear();
+    std::string file = path("state/" + user, name);
+    // A save cut short leaves only the new copy, under its temporary name.
+    if (!_fs.exists(file.c_str()))
+        file += ".new";
+    if (!_fs.exists(file.c_str()))
+        RETURN_SUCCESS_AS_TRUE();
+    return read_file(file, out);
 }
 
+// Written beside the old copy and renamed over it, so a failed write never
+// leaves a truncated file.
 success_is_true HotSyncFsStorage::write_state(const std::string &user, const std::string &name,
                                               const ByteBuffer &data)
 {
-    return write_file(path("state/" + user), name, data);
+    std::string dir = path("state/" + user);
+    std::string file = dir + "/" + name;
+    std::string fresh = file + ".new";
+    if (write_file(dir, name + ".new", data).is_error())
+        RETURN_ERROR_AS_FALSE();
+    if (_fs.exists(file.c_str()) && _fs.remove(file.c_str()).is_error())
+        RETURN_ERROR_AS_FALSE();
+    return _fs.rename(fresh.c_str(), file.c_str());
 }

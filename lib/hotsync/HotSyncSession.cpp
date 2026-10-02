@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 
 // Databases every device regenerates; backing them up only wastes time.
 static const char *const SKIP_BACKUP[] = {"Unsaved Preferences"};
@@ -46,6 +47,8 @@ HotSyncReport HotSyncSession::run()
     DlpError err = identify_user();
     if (err == DlpError::NONE)
         err = _dlp.open_conduit();
+    if (err == DlpError::NONE && _options.calendar != nullptr)
+        err = read_palm_zone();
     if (err == DlpError::NONE)
         err = install_pending();
     if (err == DlpError::NONE && _options.calendar != nullptr)
@@ -167,26 +170,37 @@ DlpError HotSyncSession::write_contents(uint8_t handle, const PalmDatabase &db)
     return err;
 }
 
+// The Palm's zone, from its clock, when FujiNet has none configured. Read
+// before installing, which can take minutes, while utc_now is still current.
+DlpError HotSyncSession::read_palm_zone()
+{
+    if (!_options.timezone.empty() && _palm_tz.parse(_options.timezone))
+        return DlpError::NONE;
+    _palm_tz = fn_time::PosixTz();
+    DlpDateTime palm;
+    DlpError err = _dlp.get_sys_date_time(palm);
+    if (is_fatal(err))
+        return err;
+    if (err == DlpError::NONE && _options.utc_now != 0)
+    {
+        int64_t local = fn_time::fn_timegm(palm.year, palm.month, palm.day, palm.hour,
+                                           palm.minute, palm.second);
+        _palm_tz = datebook_zone_from_offset(static_cast<int>(local - _options.utc_now));
+    }
+    return DlpError::NONE;
+}
+
 DlpError HotSyncSession::sync_datebook()
 {
     DatebookSyncOptions options;
     options.from = _options.calendar_from;
     options.to = _options.calendar_to;
-    if (_options.timezone.empty() || !options.tz.parse(_options.timezone))
-    {
-        DlpDateTime palm;
-        DlpError err = _dlp.get_sys_date_time(palm);
-        if (is_fatal(err))
-            return err;
-        if (err == DlpError::NONE && _options.utc_now != 0)
-        {
-            int64_t local = fn_time::fn_timegm(palm.year, palm.month, palm.day, palm.hour,
-                                               palm.minute, palm.second);
-            options.tz = datebook_zone_from_offset(static_cast<int>(local - _options.utc_now));
-        }
-    }
+    options.tz = _palm_tz;
 
-    DatebookConduit conduit(_dlp, _storage, hotsync_safe_name(_user.user_name));
+    // Two Palms can share a user name, but not a user ID.
+    char id[12];
+    std::snprintf(id, sizeof(id), "-%08lx", static_cast<unsigned long>(_user.user_id));
+    DatebookConduit conduit(_dlp, _storage, hotsync_safe_name(_user.user_name) + id);
     DatebookSyncReport &r = _report.datebook;
     DlpError err = conduit.sync(*_options.calendar, options, r);
     if (is_fatal(err))
