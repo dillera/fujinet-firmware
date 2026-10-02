@@ -12,8 +12,8 @@
 #include <cstdio>
 #include <cstring>
 
-// Enough for a busy two months; each raw entry is 277 bytes.
-static constexpr int MAX_EVENTS = 400;
+// The most a calendar listing returns (CAL_MAX_EVENTS in Calendar.cpp).
+static constexpr size_t MAX_EVENTS = 300;
 static constexpr int64_t SECONDS_PER_DAY = 86400;
 
 static std::string url_encode(const std::string &s)
@@ -39,7 +39,7 @@ static std::string field(const char *text, size_t size)
     return std::string(text, strnlen(text, size));
 }
 
-success_is_true HotSyncNetCalendar::fetch(int64_t from, int64_t to, std::vector<HotSyncEvent> &out)
+success_is_true HotSyncNetCalendar::fetch(int64_t &from, int64_t &to, std::vector<HotSyncEvent> &out)
 {
     size_t colon = _source.find("://");
     if (colon == std::string::npos)
@@ -59,8 +59,8 @@ success_is_true HotSyncNetCalendar::fetch(int64_t from, int64_t to, std::vector<
     unsigned m, d;
     fn_time::civil_from_days(first_day, y, m, d);
     char view[64];
-    std::snprintf(view, sizeof(view), "AGENDA/%04d-%02u-%02u?days=%lld&count=%d&tz=", y, m, d,
-                  static_cast<long long>(days), MAX_EVENTS);
+    std::snprintf(view, sizeof(view), "AGENDA/%04d-%02u-%02u?days=%lld&count=%u&tz=", y, m, d,
+                  static_cast<long long>(days), static_cast<unsigned>(MAX_EVENTS));
 
     std::string rx, tx, sp, login, password;
     std::unique_ptr<NetworkProtocol> protocol =
@@ -107,5 +107,22 @@ success_is_true HotSyncNetCalendar::fetch(int64_t from, int64_t to, std::vector<
         out.push_back(e);
     }
     protocol->close();
+
+    // The listing runs from local midnight of its first day.
+    from = std::max(from, tz.from_local_days(first_day, 0, 0, 0));
+    to = std::min(to, tz.from_local_days(first_day + days, 0, 0, 0));
+
+    // A full listing may have dropped later events; end the window before the
+    // last start it holds, so none of them reads as cancelled.
+    if (out.size() >= MAX_EVENTS)
+    {
+        int64_t last = from;
+        for (const HotSyncEvent &e : out)
+            last = std::max(last, e.start);
+        to = std::min(to, last);
+        out.erase(std::remove_if(out.begin(), out.end(),
+                                 [&](const HotSyncEvent &e) { return e.start >= to; }),
+                  out.end());
+    }
     RETURN_SUCCESS_AS_TRUE();
 }

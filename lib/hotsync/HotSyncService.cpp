@@ -293,6 +293,7 @@ void HotSyncService::refresh_calendar()
 
     int64_t from = (utc / SECONDS_PER_DAY - _config.calendar_days_back) * SECONDS_PER_DAY;
     int64_t to = (utc / SECONDS_PER_DAY + _config.calendar_days_ahead + 1) * SECONDS_PER_DAY;
+    int64_t asked = to;
     std::vector<HotSyncEvent> events;
     if (_calendar->fetch(from, to, events).is_error())
     {
@@ -305,8 +306,9 @@ void HotSyncService::refresh_calendar()
     _events_to = to;
     _have_events = true;
     _next_calendar_fetch = std::chrono::steady_clock::now() + CALENDAR_REFRESH;
-    Debug_printf("HotSync: %u calendar events ready for the Date Book\r\n",
-                 static_cast<unsigned>(_events.size()));
+    Debug_printf("HotSync: %u calendar events ready for the Date Book%s\r\n",
+                 static_cast<unsigned>(_events.size()),
+                 to < asked ? " (window shortened to fit)" : "");
 }
 
 HotSyncOptions HotSyncService::session_options() const

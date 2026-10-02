@@ -28,8 +28,10 @@ class HotSyncCalendar
 public:
     virtual ~HotSyncCalendar() = default;
 
-    // Events that overlap [from, to), UTC.
-    virtual success_is_true fetch(int64_t from, int64_t to, std::vector<HotSyncEvent> &out) = 0;
+    // Events that overlap [from, to), UTC. from and to are narrowed to the
+    // window actually covered, e.g. when the calendar holds more events than
+    // one fetch returns.
+    virtual success_is_true fetch(int64_t &from, int64_t &to, std::vector<HotSyncEvent> &out) = 0;
 };
 
 #endif // HOTSYNC_CALENDAR_H

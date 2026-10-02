@@ -19,7 +19,7 @@ public:
     {
     }
 
-    success_is_true fetch(int64_t from, int64_t to, std::vector<HotSyncEvent> &out) override;
+    success_is_true fetch(int64_t &from, int64_t &to, std::vector<HotSyncEvent> &out) override;
 
 private:
     std::string _source;
