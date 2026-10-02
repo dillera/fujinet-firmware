@@ -18,6 +18,7 @@
 #include "fnSystem.h"
 #include "fnConfig.h"
 #include "google_oauth.h"
+#include "HotSyncService.h"
 #include "google_scopes.h"
 #include "fnPassword.h"
 #include "fnSession.h"
@@ -1207,6 +1208,17 @@ static std::string gdrive_do_post(const std::string &url, const std::string &bod
     return out;
 }
 
+int fnHttpService::get_handler_hotsync_status(mg_connection *c, mg_http_message *hm)
+{
+    char fetch[4] = {};
+    mg_http_get_var(&hm->query, "fetch", fetch, sizeof(fetch));
+    if (fetch[0] == '1' && fnHTTPD.hotsync)
+        fnHTTPD.hotsync->fetch_calendar_now();
+    std::string json = fnHTTPD.hotsync_status_json();
+    mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s", json.c_str());
+    return 0;
+}
+
 int fnHttpService::get_handler_gdrive_auth(mg_connection *c, mg_http_message *)
 {
     char state[16];
@@ -1869,6 +1881,10 @@ void fnHttpService::cb(struct mg_connection *c, int ev, void *ev_data)
         else if (mg_match(hm->uri, mg_str("/gdrive-poll"), NULL))
         {
             get_handler_gdrive_poll(c, hm);
+        }
+        else if (mg_match(hm->uri, mg_str("/hotsync-status"), NULL))
+        {
+            get_handler_hotsync_status(c, hm);
         }
         else if (mg_match(hm->uri, mg_str("/onedrive-auth"), NULL))
         {

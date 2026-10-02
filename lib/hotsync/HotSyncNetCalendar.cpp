@@ -41,9 +41,13 @@ static std::string field(const char *text, size_t size)
 
 success_is_true HotSyncNetCalendar::fetch(int64_t &from, int64_t &to, std::vector<HotSyncEvent> &out)
 {
+    _error.clear();
     size_t colon = _source.find("://");
     if (colon == std::string::npos)
+    {
+        _error = "not a calendar devicespec";
         RETURN_ERROR_AS_FALSE();
+    }
     std::string scheme = _source.substr(0, colon);
     std::transform(scheme.begin(), scheme.end(), scheme.begin(),
                    [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
@@ -70,6 +74,7 @@ success_is_true HotSyncNetCalendar::fetch(int64_t &from, int64_t &to, std::vecto
     if (!protocol || !url || !url->isValidUrl())
     {
         Debug_printf("HotSync: cannot read calendar \"%s\"\r\n", _source.c_str());
+        _error = "unknown calendar type " + scheme;
         RETURN_ERROR_AS_FALSE();
     }
     if (protocol->open(url.get(), ACCESS_MODE::DIRECTORY, static_cast<netProtoTranslation_t>(0xFF)) !=
@@ -77,6 +82,10 @@ success_is_true HotSyncNetCalendar::fetch(int64_t &from, int64_t &to, std::vecto
     {
         Debug_printf("HotSync: calendar fetch failed, status %u\r\n",
                      static_cast<unsigned>(protocol->error));
+        _error = protocol->error == NDEV_STATUS::ACCESS_DENIED
+                     ? "not authorized - authorize Google under Google Account"
+                     : "fetch failed, network status " +
+                           std::to_string(static_cast<unsigned>(protocol->error));
         protocol->close();
         RETURN_ERROR_AS_FALSE();
     }

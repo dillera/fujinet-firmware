@@ -501,7 +501,10 @@ void main_setup(int argc, char *argv[])
 #endif
 
     if (Config.get_hotsync_enabled() && fnSDFAT.running())
+    {
         hotsync.start(hotsync_config_from(Config), fnSDFAT, hotsync_cradle);
+        fnHTTPD.hotsync = &hotsync;
+    }
 
 #ifdef ESP_PLATFORM
   #ifdef DEBUG

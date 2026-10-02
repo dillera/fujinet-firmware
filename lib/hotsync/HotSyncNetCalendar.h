@@ -20,10 +20,12 @@ public:
     }
 
     success_is_true fetch(int64_t &from, int64_t &to, std::vector<HotSyncEvent> &out) override;
+    std::string error() const override { return _error; }
 
 private:
     std::string _source;
     std::string _timezone;
+    std::string _error;
 };
 
 #endif // HOTSYNC_NET_CALENDAR_H

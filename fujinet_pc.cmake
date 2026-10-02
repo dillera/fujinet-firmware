@@ -256,6 +256,7 @@ set(SOURCES src/main.cpp
     lib/webdav/WebDAV.h lib/webdav/WebDAV.cpp
     lib/webdav/IndexParser.h lib/webdav/IndexParser.cpp
     lib/http/httpService.h lib/http/mgHttpService.cpp
+    lib/http/hotsyncStatus.cpp
     lib/http/google_scopes.h
     lib/http/httpServiceParser.h lib/http/httpServiceParser.cpp
     lib/http/httpServiceConfigurator.h lib/http/httpServiceConfigurator.cpp

@@ -61,6 +61,8 @@ If a file has an extention pre-determined to support parsing (see/update
 
 #define PRINTER_BUSY_TIME 2000 // milliseconds to wait until printer is done
 
+class HotSyncService;
+
 class fnHttpService
 {
     struct serverstate {
@@ -125,6 +127,10 @@ public:
 #endif
 
     std::string errMsg;
+    // Set by main when the HotSync service runs; the HotSync panel reads it.
+    HotSyncService *hotsync = nullptr;
+    // JSON for the HotSync panel: calendar fetch status and the last sync.
+    std::string hotsync_status_json();
 
     std::string getErrMsg() { return errMsg; }
     void clearErrMsg() { errMsg.clear(); }
@@ -181,6 +187,7 @@ public:
     // Google Drive OAuth2 relay-based endpoints
     static esp_err_t get_handler_gdrive_auth(httpd_req_t *req);
     static esp_err_t get_handler_gdrive_poll(httpd_req_t *req);
+    static esp_err_t get_handler_hotsync_status(httpd_req_t *req);
 
     // OneDrive OAuth2 relay-based endpoints
     static esp_err_t get_handler_onedrive_auth(httpd_req_t *req);
@@ -231,6 +238,7 @@ public:
     // Google Drive OAuth2 relay-based endpoints
     static int get_handler_gdrive_auth(struct mg_connection *c, struct mg_http_message *hm);
     static int get_handler_gdrive_poll(struct mg_connection *c, struct mg_http_message *hm);
+    static int get_handler_hotsync_status(struct mg_connection *c, struct mg_http_message *hm);
 
     // OneDrive OAuth2 relay-based endpoints
     static int get_handler_onedrive_auth(struct mg_connection *c, struct mg_http_message *hm);

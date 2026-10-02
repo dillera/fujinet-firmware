@@ -32,6 +32,9 @@ public:
     // window actually covered, e.g. when the calendar holds more events than
     // one fetch returns.
     virtual success_is_true fetch(int64_t &from, int64_t &to, std::vector<HotSyncEvent> &out) = 0;
+
+    // Why the last fetch failed, for people to read.
+    virtual std::string error() const { return std::string(); }
 };
 
 #endif // HOTSYNC_CALENDAR_H

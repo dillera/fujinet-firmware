@@ -17,6 +17,7 @@
 
 #include "../../include/debug.h"
 
+#include <algorithm>
 #include <chrono>
 #include <ctime>
 #include <random>
@@ -281,15 +282,34 @@ void HotSyncService::sync(HotSyncLink &link, Transport transport)
     record(HotSyncSession(*dlp, storage, session_options()).run());
 }
 
+HotSyncCalendarStatus HotSyncService::calendar_status()
+{
+    std::lock_guard<std::mutex> lock(_result_lock);
+    HotSyncCalendarStatus status = _calendar_status;
+    status.source = _config.calendar;
+    if (_calendar && !status.fetching && _next_calendar_fetch.time_since_epoch().count() != 0)
+    {
+        auto left = std::chrono::duration_cast<std::chrono::seconds>(
+            _next_calendar_fetch - std::chrono::steady_clock::now());
+        status.next_fetch_in = _fetch_now ? 0 : std::max<int>(0, static_cast<int>(left.count()));
+    }
+    return status;
+}
+
 void HotSyncService::refresh_calendar()
 {
     auto now = std::chrono::steady_clock::now();
-    if (!_calendar || now < _next_calendar_fetch)
+    if (!_calendar || (now < _next_calendar_fetch && !_fetch_now))
         return;
     // Until SNTP sets the clock there is no window to fetch.
     int64_t utc = static_cast<int64_t>(std::time(nullptr));
     if (utc < 1577836800)
         return;
+    _fetch_now = false;
+    {
+        std::lock_guard<std::mutex> lock(_result_lock);
+        _calendar_status.fetching = true;
+    }
 
     int64_t from = (utc / SECONDS_PER_DAY - _config.calendar_days_back) * SECONDS_PER_DAY;
     int64_t to = (utc / SECONDS_PER_DAY + _config.calendar_days_ahead + 1) * SECONDS_PER_DAY;
@@ -298,14 +318,29 @@ void HotSyncService::refresh_calendar()
     if (_calendar->fetch(from, to, events).is_error())
     {
         Debug_printf("HotSync: could not read calendar %s\r\n", _config.calendar.c_str());
-        _next_calendar_fetch = now + CALENDAR_RETRY;
+        std::lock_guard<std::mutex> lock(_result_lock);
+        _next_calendar_fetch = std::chrono::steady_clock::now() + CALENDAR_RETRY;
+        _calendar_status.fetching = false;
+        _calendar_status.error = _calendar->error();
+        if (_calendar_status.error.empty())
+            _calendar_status.error = "fetch failed";
         return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(_result_lock);
+        _calendar_status.fetching = false;
+        _calendar_status.fetched_at = static_cast<int64_t>(std::time(nullptr));
+        _calendar_status.events = static_cast<int>(events.size());
+        _calendar_status.error.clear();
     }
     _events = std::move(events);
     _events_from = from;
     _events_to = to;
     _have_events = true;
-    _next_calendar_fetch = std::chrono::steady_clock::now() + CALENDAR_REFRESH;
+    {
+        std::lock_guard<std::mutex> lock(_result_lock);
+        _next_calendar_fetch = std::chrono::steady_clock::now() + CALENDAR_REFRESH;
+    }
     Debug_printf("HotSync: %u calendar events ready for the Date Book%s\r\n",
                  static_cast<unsigned>(_events.size()),
                  to < asked ? " (window shortened to fit)" : "");

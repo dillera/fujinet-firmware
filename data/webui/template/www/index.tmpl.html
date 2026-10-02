@@ -1351,6 +1351,23 @@
 								<input type="text" name="hotsync_calendar_days_ahead" size="3" value="<%FN_HOTSYNC_DAYS_AHEAD%>">
 							</div>
 						</div>
+						<div class="set">
+							<div class="settings-label">
+								<label>Calendar fetch</label>
+							</div>
+							<div class="settings-value">
+								<span id="hotsync-cal-status">&hellip;</span>
+								<div><button type="button" id="hotsync-fetch-btn">Fetch now</button></div>
+							</div>
+						</div>
+						<div class="set">
+							<div class="settings-label">
+								<label>Last HotSync</label>
+							</div>
+							<div class="settings-value">
+								<span id="hotsync-last">&hellip;</span>
+							</div>
+						</div>
 						<hr>
 						<div class="settings-text">
 							<p>Each HotSync copies the calendar's events into the Palm's Date Book. Appointments made on the Palm are left alone.</p>
@@ -1360,6 +1377,52 @@
 						<script>
 							var current_hotsync_enabled = "<%FN_HOTSYNC_ENABLED%>";
 							var current_hotsync_backup = "<%FN_HOTSYNC_BACKUP%>";
+							(function() {
+								var statusEl = document.getElementById("hotsync-cal-status");
+								var lastEl = document.getElementById("hotsync-last");
+								var btn = document.getElementById("hotsync-fetch-btn");
+								var s = null, at = 0;
+								function clock(sec) {
+									sec = Math.max(0, Math.round(sec));
+									return Math.floor(sec / 60) + ":" + ("0" + (sec % 60)).slice(-2);
+								}
+								function ago(sec) {
+									if (sec < 60) return "just now";
+									if (sec < 3600) return Math.floor(sec / 60) + " min ago";
+									return Math.floor(sec / 3600) + " h ago";
+								}
+								function render() {
+									if (!s) return;
+									if (!s.running) { statusEl.textContent = "HotSync server is off."; btn.disabled = true; return; }
+									if (!s.calendar) { statusEl.textContent = "No calendar set."; btn.disabled = true; return; }
+									var gone = (Date.now() - at) / 1000, parts = [];
+									if (s.fetching) parts.push("Fetching now\u2026");
+									else if (s.error) parts.push("Last fetch failed: " + s.error + ".");
+									if (s.fetched_ago >= 0)
+										parts.push(s.events + " events ready, fetched " + ago(s.fetched_ago + gone) + ".");
+									else if (!s.fetching && !s.error)
+										parts.push("Not fetched yet.");
+									if (!s.fetching && s.next_fetch_in >= 0)
+										parts.push("Next fetch in " + clock(s.next_fetch_in - gone) + ".");
+									statusEl.textContent = parts.join(" ");
+									btn.disabled = s.fetching;
+									lastEl.textContent = s.last_sync || "None yet";
+								}
+								function poll(fetchNow) {
+									fetch("/hotsync-status" + (fetchNow ? "?fetch=1" : ""))
+										.then(function(r){ return r.json(); })
+										.then(function(d){ s = d; at = Date.now(); render(); })
+										.catch(function(){ statusEl.textContent = "Could not reach FujiNet."; });
+								}
+								btn.addEventListener("click", function(e) {
+									e.preventDefault(); btn.disabled = true;
+									statusEl.textContent = "Asking FujiNet to fetch\u2026";
+									poll(true);
+								});
+								poll(false);
+								setInterval(render, 1000);
+								setInterval(function(){ poll(false); }, 5000);
+							})();
 						</script>
 					</div>
 					<div class="settings-footer">

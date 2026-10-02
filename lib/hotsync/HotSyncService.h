@@ -45,6 +45,16 @@ struct HotSyncServiceConfig {
 
 constexpr const char *HOTSYNC_BUS_SERIAL_PORT = "bus";
 
+// What the web UI shows about the calendar fetch.
+struct HotSyncCalendarStatus {
+    std::string source;      // empty when no calendar is configured
+    bool fetching = false;
+    int64_t fetched_at = 0;  // UTC of the last good fetch, 0 if none
+    int events = 0;          // events from that fetch
+    std::string error;       // why the latest fetch failed; empty if it worked
+    int next_fetch_in = -1;  // seconds, -1 when none is due (e.g. no Wi-Fi yet)
+};
+
 class HotSyncService
 {
 public:
@@ -60,6 +70,10 @@ public:
     bool running() const { return _thread.joinable(); }
     // One line describing the most recent sync, for the web UI.
     std::string last_result();
+
+    HotSyncCalendarStatus calendar_status();
+    // Fetch the calendar as soon as the service thread is free.
+    void fetch_calendar_now() { _fetch_now = true; }
 
 private:
     enum class Transport { NETSYNC, SERIAL_OVER_TCP };
@@ -96,6 +110,8 @@ private:
     int64_t _events_to = 0;
     bool _have_events = false;
     std::chrono::steady_clock::time_point _next_calendar_fetch;
+    std::atomic<bool> _fetch_now{false};
+    HotSyncCalendarStatus _calendar_status; // guarded by _result_lock
 };
 
 class fnConfig;

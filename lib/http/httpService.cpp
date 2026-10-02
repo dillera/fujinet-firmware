@@ -18,6 +18,7 @@
 #include "fnSystem.h"
 #include "fnConfig.h"
 #include "google_oauth.h"
+#include "HotSyncService.h"
 #include "google_scopes.h"
 #include "fnPassword.h"
 #include "fnSession.h"
@@ -1981,6 +1982,28 @@ esp_err_t fnHttpService::get_handler_gdrive_poll(httpd_req_t *req)
     return ESP_OK;
 }
 
+/**
+ * GET /hotsync-status[?fetch=1]
+ *
+ * The HotSync panel's live line: the calendar fetch and the last sync.
+ * fetch=1 asks the service to fetch the calendar now.
+ */
+esp_err_t fnHttpService::get_handler_hotsync_status(httpd_req_t *req)
+{
+    size_t qlen = httpd_req_get_url_query_len(req) + 1;
+    std::string qbuf(qlen, '\0');
+    httpd_req_get_url_query_str(req, &qbuf[0], qlen);
+    char fetch[4] = {};
+    httpd_query_key_value(qbuf.c_str(), "fetch", fetch, sizeof(fetch));
+    if (fetch[0] == '1' && fnHTTPD.hotsync)
+        fnHTTPD.hotsync->fetch_calendar_now();
+
+    std::string json = fnHTTPD.hotsync_status_json();
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, json.c_str(), json.size());
+    return ESP_OK;
+}
+
 // ─── end Google Drive handlers ────────────────────────────────────────────────
 
 // ─── OneDrive OAuth2 relay-based authorization-code-flow handlers ────────────
@@ -2360,6 +2383,13 @@ httpd_handle_t fnHttpService::start_server(serverstate &state)
         {.uri = "/files",
          .method = HTTP_GET,
          .handler = get_handler_files,
+         .user_ctx = NULL,
+         .is_websocket = false,
+         .handle_ws_control_frames = false,
+         .supported_subprotocol = nullptr},
+        {.uri = "/hotsync-status",
+         .method = HTTP_GET,
+         .handler = get_handler_hotsync_status,
          .user_ctx = NULL,
          .is_websocket = false,
          .handle_ws_control_frames = false,
