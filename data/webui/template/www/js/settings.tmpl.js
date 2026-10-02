@@ -184,6 +184,11 @@ setInputValue(current_apetime == 1, "tz-apetime-yes", "tz-apetime-no");
 setInputValue(current_cpm_enabled == 1, "cpm-virt-yes", "cpm-virt-no");
 {% endif %}
 
+{% if components.hotsync %}
+setInputValue(current_hotsync_enabled == 1, "hotsync-yes", "hotsync-no");
+selectListValue("select_hotsync_backup", current_hotsync_backup);
+{% endif %}
+
 {% if components.serial_port %}
 {% if tweaks.platform == "ATARI" %}
 setSerialCommand(current_serial_command);

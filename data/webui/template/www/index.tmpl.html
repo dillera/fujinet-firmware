@@ -1281,6 +1281,96 @@
 				</form>
 			</div>
 			{% endif %}
+			{% if components.hotsync %}
+			<div class="module" {% if components.hotsync == "experimental" %}data-experimental{% endif %}>
+				<form action="/config" method="post">
+				<div class="settings">
+					<div class="settings-header">
+						Palm HotSync
+					</div>
+					<div class="settings-left">
+						<div class="svgicon">
+							<svg width="80%" height="80%" viewBox="0 0 40 60" xmlns="http://www.w3.org/2000/svg">
+								<rect x="2" y="2" width="36" height="56" rx="6" fill="#454545" stroke="#000" stroke-width="2"/>
+								<rect x="7" y="8" width="26" height="26" fill="#9db08a"/>
+								<rect x="7" y="37" width="26" height="9" fill="#cfcfcf"/>
+								<circle cx="11" cy="52" r="2.5" fill="#cfcfcf"/>
+								<circle cx="20" cy="52" r="2.5" fill="#cfcfcf"/>
+								<circle cx="29" cy="52" r="2.5" fill="#cfcfcf"/>
+							</svg>
+						</div>
+					</div>
+					<div class="settings-content settings-55-45">
+						<div class="set">
+							<div class="settings-label">
+								<label>HotSync server</label>
+							</div>
+							<div class="settings-value">
+								<div class="radio-container">
+									<input id="hotsync-yes" name="hotsync_enabled" type="radio" value="1">
+									<label for="hotsync-yes" class="r-yes-no">On</label>
+									<input id="hotsync-no" name="hotsync_enabled" type="radio" value="0">
+									<label for="hotsync-no" class="r-yes-no">Off</label>
+								</div>
+							</div>
+						</div>
+						<div class="set">
+							<div class="settings-label">
+								<label>User name for a new Palm</label>
+							</div>
+							<div class="settings-value">
+								<input type="text" name="hotsync_user" value="<%FN_HOTSYNC_USER%>">
+							</div>
+						</div>
+						<div class="set">
+							<div class="settings-label">
+								<label>Back up</label>
+							</div>
+							<div class="settings-value">
+								<select name="hotsync_backup" id="select_hotsync_backup">
+									<option value="flagged">Databases marked for backup</option>
+									<option value="all">Every database</option>
+									<option value="none">Nothing</option>
+								</select>
+							</div>
+						</div>
+						<div class="set">
+							<div class="settings-label">
+								<label>Calendar for the Date Book</label>
+							</div>
+							<div class="settings-value">
+								<input type="text" name="hotsync_calendar" value="<%FN_HOTSYNC_CALENDAR%>">
+							</div>
+						</div>
+						<div class="set">
+							<div class="settings-label">
+								<label>Days of past / future events</label>
+							</div>
+							<div class="settings-value">
+								<input type="text" name="hotsync_calendar_days_back" size="3" value="<%FN_HOTSYNC_DAYS_BACK%>">
+								<input type="text" name="hotsync_calendar_days_ahead" size="3" value="<%FN_HOTSYNC_DAYS_AHEAD%>">
+							</div>
+						</div>
+						<hr>
+						<div class="settings-text">
+							<p>Each HotSync copies the calendar's events into the Palm's Date Book. Appointments made on the Palm are left alone.</p>
+							<p><strong>GCAL:///</strong> is every calendar shown in Google Calendar (authorize Google under Google Account); <strong>GCAL://Work/</strong> is one calendar; <strong>ICAL://host/feed.ics</strong> is an iCalendar feed. Enter <strong>off</strong> to leave the Date Book alone.</p>
+							<p>Times use the timezone set above. Changes take effect when FujiNet restarts.</p>
+						</div>
+						<script>
+							var current_hotsync_enabled = "<%FN_HOTSYNC_ENABLED%>";
+							var current_hotsync_backup = "<%FN_HOTSYNC_BACKUP%>";
+						</script>
+					</div>
+					<div class="settings-footer">
+						<div class="save-button">
+							<button type="submit" value="Save">Save</button>
+						</div>
+					</div>
+				</div>
+				</form>
+			</div>
+			{% endif %}
 			{% if components.pclink %}
 			<div class="module" {% if components.pclink == "experimental" %}data-experimental{% endif %}>
 				<form action="/config" method="post">

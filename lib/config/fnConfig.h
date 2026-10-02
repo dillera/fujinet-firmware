@@ -341,6 +341,8 @@ public:
     void store_hotsync_enabled(bool enabled);
     void store_hotsync_user(const std::string &user);
     void store_hotsync_backup(const std::string &backup);
+    void store_hotsync_calendar(const std::string &calendar);
+    void store_hotsync_calendar_days(int back, int ahead);
 
     void load();
     void save();

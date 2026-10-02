@@ -3,5 +3,6 @@ components:
   serial_port: true
   emulator_settings: true
   cpm_settings: true
+  hotsync: true
 tweaks:
   platform: RS232

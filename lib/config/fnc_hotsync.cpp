@@ -31,6 +31,23 @@ void fnConfig::store_hotsync_backup(const std::string &backup)
     _dirty = true;
 }
 
+void fnConfig::store_hotsync_calendar(const std::string &calendar)
+{
+    if (_hotsync.calendar == calendar)
+        return;
+    _hotsync.calendar = calendar;
+    _dirty = true;
+}
+
+void fnConfig::store_hotsync_calendar_days(int back, int ahead)
+{
+    if (_hotsync.calendar_days_back == back && _hotsync.calendar_days_ahead == ahead)
+        return;
+    _hotsync.calendar_days_back = back;
+    _hotsync.calendar_days_ahead = ahead;
+    _dirty = true;
+}
+
 // A port of 0 turns that listener off; anything unparseable keeps the default.
 static int parse_port(const std::string &value, int fallback)
 {

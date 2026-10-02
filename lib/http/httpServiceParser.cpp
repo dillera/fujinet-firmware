@@ -261,6 +261,12 @@ const string fnHttpServiceParser::substitute_tag(const string &tag)
         FN_APETIME_ENABLED,
         FN_CPM_ENABLED,
         FN_CPM_CCP,
+        FN_HOTSYNC_ENABLED,
+        FN_HOTSYNC_USER,
+        FN_HOTSYNC_BACKUP,
+        FN_HOTSYNC_CALENDAR,
+        FN_HOTSYNC_DAYS_BACK,
+        FN_HOTSYNC_DAYS_AHEAD,
         FN_ALT_CFG,
         FN_PCLINK_ENABLED,
         FN_GDRIVE_CONNECTED,
@@ -391,6 +397,12 @@ const string fnHttpServiceParser::substitute_tag(const string &tag)
         "FN_APETIME_ENABLED",
         "FN_CPM_ENABLED",
         "FN_CPM_CCP",
+        "FN_HOTSYNC_ENABLED",
+        "FN_HOTSYNC_USER",
+        "FN_HOTSYNC_BACKUP",
+        "FN_HOTSYNC_CALENDAR",
+        "FN_HOTSYNC_DAYS_BACK",
+        "FN_HOTSYNC_DAYS_AHEAD",
         "FN_ALT_CFG",
         "FN_PCLINK_ENABLED",
         "FN_GDRIVE_CONNECTED",
@@ -764,6 +776,24 @@ const string fnHttpServiceParser::substitute_tag(const string &tag)
         break;
     case FN_CPM_CCP:
         resultstream << Config.get_ccp_filename();
+        break;
+    case FN_HOTSYNC_ENABLED:
+        resultstream << Config.get_hotsync_enabled();
+        break;
+    case FN_HOTSYNC_USER:
+        resultstream << Config.get_hotsync_user();
+        break;
+    case FN_HOTSYNC_BACKUP:
+        resultstream << Config.get_hotsync_backup();
+        break;
+    case FN_HOTSYNC_CALENDAR:
+        resultstream << Config.get_hotsync_calendar();
+        break;
+    case FN_HOTSYNC_DAYS_BACK:
+        resultstream << Config.get_hotsync_calendar_days_back();
+        break;
+    case FN_HOTSYNC_DAYS_AHEAD:
+        resultstream << Config.get_hotsync_calendar_days_ahead();
         break;
     case FN_ALT_CFG:
         resultstream << Config.get_config_filename();

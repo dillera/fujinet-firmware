@@ -537,6 +537,30 @@ void fnHttpServiceConfigurator::config_cpm_enabled(std::string cpm_enabled)
     Config.save();
 }
 
+// The [HotSync] fields of the Palm HotSync form. An empty field is never
+// posted, so "off" clears the calendar.
+void fnHttpServiceConfigurator::config_hotsync(const std::string &key, const std::string &value)
+{
+    if (key == "hotsync_enabled")
+        Config.store_hotsync_enabled(atoi(value.c_str()) != 0);
+    else if (key == "hotsync_user")
+        Config.store_hotsync_user(value);
+    else if (key == "hotsync_backup" && (value == "none" || value == "flagged" || value == "all"))
+        Config.store_hotsync_backup(value);
+    else if (key == "hotsync_calendar")
+        Config.store_hotsync_calendar(strcasecmp(value.c_str(), "off") == 0 ? "" : value);
+    else if (key == "hotsync_calendar_days_back" || key == "hotsync_calendar_days_ahead")
+    {
+        int days = atoi(value.c_str());
+        if (days < 0 || days > 366)
+            return;
+        bool back = key == "hotsync_calendar_days_back";
+        Config.store_hotsync_calendar_days(back ? days : Config.get_hotsync_calendar_days_back(),
+                                           back ? Config.get_hotsync_calendar_days_ahead() : days);
+    }
+    Config.save();
+}
+
 void fnHttpServiceConfigurator::config_cpm_ccp(std::string cpm_ccp)
 {
     // Use $ as a flag to reset to default CCP since empty field never gets to here
@@ -834,6 +858,10 @@ int fnHttpServiceConfigurator::process_config_post(const char *postdata, size_t 
         else if (i->first.compare("cpm_ccp") == 0)
         {
             config_cpm_ccp(i->second);
+        }
+        else if (i->first.compare(0, 8, "hotsync_") == 0)
+        {
+            config_hotsync(i->first, i->second);
         }
         else if (i->first.compare("alt_cfg") == 0)
         {

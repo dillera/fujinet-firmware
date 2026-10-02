@@ -17,6 +17,7 @@ components:
   net_stream: false
   program_recorder: false
   cpm_settings: false
+  hotsync: false
   pclink: false
   emulator_settings: false
   serial_port: false
