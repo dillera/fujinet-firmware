@@ -8,6 +8,10 @@
 #include "../../include/debug.h"
 
 #define MAX_HOST_SLOTS 8
+// The FujiNet project's Google OAuth client and relay, used unless
+// [GoogleDrive] client_id / relay name another.
+#define GOOGLE_DEFAULT_CLIENT_ID "197927610161-me037pnh65lh9g8cad6fg62ifni9fik0.apps.googleusercontent.com"
+#define GOOGLE_DEFAULT_RELAY "https://auth.fujinet.online"
 #ifdef BUILD_APPLE
 #define MAX_MOUNT_SLOTS 10
 #else
@@ -260,6 +264,9 @@ public:
     std::string get_gdrive_refresh_token() { return _gdrive.refresh_token; };
     std::string get_gdrive_access_token() { return _gdrive.access_token; };
     long get_gdrive_token_expiry() { return _gdrive.token_expiry; };
+    // The OAuth client and the relay that holds its secret; see tools/gdrive-relay.
+    std::string get_gdrive_client_id() { return _gdrive.client_id; };
+    std::string get_gdrive_relay() { return _gdrive.relay; };
     void store_gdrive_refresh_token(const std::string &refresh_token);
     void store_gdrive_access_token(const std::string &access_token);
     void store_gdrive_token_expiry(long expiry);
@@ -588,6 +595,8 @@ private:
         std::string refresh_token;
         std::string access_token;
         long token_expiry = 0;
+        std::string client_id = GOOGLE_DEFAULT_CLIENT_ID;
+        std::string relay = GOOGLE_DEFAULT_RELAY;
     };
 
     struct s3_info

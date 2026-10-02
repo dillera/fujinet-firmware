@@ -165,6 +165,10 @@ void fnConfig::save()
     ss << "refresh_token=" << _gdrive.refresh_token << LINETERM;
     ss << "access_token=" << _gdrive.access_token << LINETERM;
     ss << "token_expiry=" << _gdrive.token_expiry << LINETERM;
+    if (_gdrive.client_id != GOOGLE_DEFAULT_CLIENT_ID)
+        ss << "client_id=" << _gdrive.client_id << LINETERM;
+    if (_gdrive.relay != GOOGLE_DEFAULT_RELAY)
+        ss << "relay=" << _gdrive.relay << LINETERM;
 
     // S3 (Amazon S3 / S3-compatible object storage)
     ss << LINETERM << "[S3]" << LINETERM;

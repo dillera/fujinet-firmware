@@ -19,7 +19,6 @@
 
 // Google OAuth2 / Drive API endpoints
 // Token refresh goes through the relay so the client_secret stays server-side.
-#define GDRIVE_RELAY_REFRESH_URL "https://auth.fujinet.online/gdrive-refresh"
 #define GDRIVE_FILES_URL     "https://www.googleapis.com/drive/v3/files"
 #define GDRIVE_UPLOAD_URL    "https://www.googleapis.com/upload/drive/v3/files"
 #define GDRIVE_FIELDS        "id,name,size,mimeType,trashed,shortcutDetails(targetId,targetMimeType)"
@@ -93,7 +92,7 @@ bool NetworkProtocolGDRIVE::refresh_access_token()
 
     std::string body = "refresh_token=" + url_encode(refresh_token);
 
-    std::string resp = api_post(GDRIVE_RELAY_REFRESH_URL, body,
+    std::string resp = api_post(Config.get_gdrive_relay() + "/gdrive-refresh", body,
                                 "application/x-www-form-urlencoded");
     if (resp.empty())
         return false;

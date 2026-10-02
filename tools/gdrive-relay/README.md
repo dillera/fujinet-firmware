@@ -59,6 +59,29 @@ Register the relay's credential once at console.cloud.google.com:
 
 End users need no credentials — they just click **Authorize with Google** in the FujiNet web UI.
 
+## Running your own client and relay
+
+The project's OAuth client stays in Google's testing mode, which admits only
+approved test users. To use your own Google Cloud project instead:
+
+1. In the Google Cloud console, enable the APIs you want (Calendar, Drive,
+   Gmail), set up the OAuth consent screen (External; add yourself as a test
+   user, then **Publish app** so refresh tokens do not expire after 7 days),
+   and create a **Web application** client whose redirect URI is
+   `https://<your relay host>/gdrive-callback`.
+2. Run this relay at that host with your client's ID and secret.
+3. Point the FujiNet at both, in the `[GoogleDrive]` section of `fnconfig.ini`:
+
+   ```ini
+   [GoogleDrive]
+   client_id=<your client id>.apps.googleusercontent.com
+   relay=https://<your relay host>
+   ```
+
+   then click **Authorize with Google** in the web UI. A grant made through
+   one client cannot be refreshed through another, so re-authorize after
+   switching.
+
 ## Endpoints
 
 | Method | Path | Description |

@@ -1161,10 +1161,6 @@ int fnHttpService::get_handler_shorturl(mg_connection *c, mg_http_message *hm)
 
 // ─── Google Drive OAuth2 relay handlers ──────────────────────────────────────
 
-#define GDRIVE_CLIENT_ID          "197927610161-me037pnh65lh9g8cad6fg62ifni9fik0.apps.googleusercontent.com"
-#define GDRIVE_RELAY_REDIRECT_URI "https://auth.fujinet.online/gdrive-callback"
-#define GDRIVE_RELAY_CODE_URL     "https://auth.fujinet.online/gdrive-code?state="
-
 static std::string gdrive_auth_state;
 
 static std::string gdrive_pct_encode(const std::string &s)
@@ -1206,8 +1202,8 @@ int fnHttpService::get_handler_gdrive_auth(mg_connection *c, mg_http_message *)
         "?response_type=code"
         "&access_type=offline"
         "&prompt=consent"
-        "&client_id="    + gdrive_pct_encode(GDRIVE_CLIENT_ID) +
-        "&redirect_uri=" + gdrive_pct_encode(GDRIVE_RELAY_REDIRECT_URI) +
+        "&client_id="    + gdrive_pct_encode(Config.get_gdrive_client_id()) +
+        "&redirect_uri=" + gdrive_pct_encode(Config.get_gdrive_relay() + "/gdrive-callback") +
         "&scope="        + gdrive_pct_encode(GOOGLE_OAUTH_SCOPES) +
         "&state="        + std::string(state);
 
@@ -1241,7 +1237,7 @@ int fnHttpService::get_handler_gdrive_poll(mg_connection *c, mg_http_message *hm
         return 0;
     }
 
-    std::string relay_url = std::string(GDRIVE_RELAY_CODE_URL) + state;
+    std::string relay_url = Config.get_gdrive_relay() + "/gdrive-code?state=" + state;
     std::string relay_body = gdrive_do_get(relay_url);
 
     if (relay_body.empty()) {

@@ -41,6 +41,14 @@ void fnConfig::_read_section_gdrive(std::stringstream &ss)
                 _gdrive.access_token = value;
             else if (strcasecmp(name.c_str(), "token_expiry") == 0)
                 _gdrive.token_expiry = atol(value.c_str());
+            else if (strcasecmp(name.c_str(), "client_id") == 0 && !value.empty())
+                _gdrive.client_id = value;
+            else if (strcasecmp(name.c_str(), "relay") == 0 && !value.empty())
+            {
+                _gdrive.relay = value;
+                while (!_gdrive.relay.empty() && _gdrive.relay.back() == '/')
+                    _gdrive.relay.pop_back();
+            }
         }
     }
 }

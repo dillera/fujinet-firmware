@@ -24,7 +24,6 @@ using namespace fn_time;
 // Token refresh goes through the same relay as Google Drive; the shared grant
 // must carry the calendar.readonly scope for the returned token to reach the
 // Calendar API, plus calendar.events for compose/edit.
-#define GCAL_RELAY_REFRESH_URL "https://auth.fujinet.online/gdrive-refresh"
 
 // Bound the work when a selector names every calendar in an account.
 #define GCAL_MAX_CALENDARS 8
@@ -140,7 +139,7 @@ bool NetworkProtocolGCAL::refresh_access_token()
     }
 
     std::string body = "refresh_token=" + url_encode(refresh_token);
-    std::string resp = api_post(GCAL_RELAY_REFRESH_URL, body, "application/x-www-form-urlencoded");
+    std::string resp = api_post(Config.get_gdrive_relay() + "/gdrive-refresh", body, "application/x-www-form-urlencoded");
     if (resp.empty()) return false;
 
     cJSON *j = cJSON_Parse(resp.c_str());

@@ -1726,20 +1726,10 @@ esp_err_t fnHttpService::post_handler_clipboard_restore(httpd_req_t *req)
 
 // ─── Google Drive OAuth2 relay-based authorization-code-flow handlers ────────
 //
-// The FujiNet project registers ONE Google OAuth2 "Desktop application" client.
-// Its client_id is public and baked in here.  PKCE (RFC 7636) is used so no
-// client_secret is ever needed on the device.
-//
-// Every FujiNet user registers the same relay redirect URI in their copy of
-// the shared OAuth client:
-//   https://auth.fujinet.online/gdrive-callback
-//
-// FujiNet project's Web application OAuth2 client ID.
-// The client_secret lives on the relay server — never in firmware.
-#define GDRIVE_CLIENT_ID          "197927610161-me037pnh65lh9g8cad6fg62ifni9fik0.apps.googleusercontent.com"
-#define GDRIVE_RELAY_REDIRECT_URI "https://auth.fujinet.online/gdrive-callback"
-#define GDRIVE_RELAY_CODE_URL     "https://auth.fujinet.online/gdrive-code?state="
-#define GDRIVE_RELAY_REFRESH_URL  "https://auth.fujinet.online/gdrive-refresh"
+// The OAuth client ID and the relay come from [GoogleDrive] client_id and
+// relay, defaulting to the FujiNet project's (GOOGLE_DEFAULT_* in fnConfig.h).
+// The client's secret lives on the relay, never in firmware; Google redirects
+// to <relay>/gdrive-callback. tools/gdrive-relay runs a relay of your own.
 
 static std::string gdrive_auth_state;
 
@@ -1847,8 +1837,8 @@ esp_err_t fnHttpService::get_handler_gdrive_auth(httpd_req_t *req)
         "?response_type=code"
         "&access_type=offline"
         "&prompt=consent"
-        "&client_id="    + gdrive_pct_encode(GDRIVE_CLIENT_ID) +
-        "&redirect_uri=" + gdrive_pct_encode(GDRIVE_RELAY_REDIRECT_URI) +
+        "&client_id="    + gdrive_pct_encode(Config.get_gdrive_client_id()) +
+        "&redirect_uri=" + gdrive_pct_encode(Config.get_gdrive_relay() + "/gdrive-callback") +
         "&scope="        + gdrive_pct_encode(GOOGLE_OAUTH_SCOPES) +
         "&state="        + std::string(state);
 
@@ -1904,7 +1894,7 @@ esp_err_t fnHttpService::get_handler_gdrive_poll(httpd_req_t *req)
     }
 
     // Poll the relay for the finished tokens (relay does the exchange).
-    std::string relay_url = std::string(GDRIVE_RELAY_CODE_URL) + state;
+    std::string relay_url = Config.get_gdrive_relay() + "/gdrive-code?state=" + state;
     std::string relay_body;
     int relay_status = gdrive_do_get(relay_url.c_str(), relay_body);
 

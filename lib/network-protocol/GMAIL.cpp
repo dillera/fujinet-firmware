@@ -27,7 +27,6 @@
 // Token refresh goes through the same relay as Google Drive; the shared grant
 // must carry the gmail.readonly scope for the returned token to reach Gmail,
 // and gmail.send for compose/reply.
-#define GMAIL_RELAY_REFRESH_URL "https://auth.fujinet.online/gdrive-refresh"
 
 // ─── file-local helpers ───────────────────────────────────────────────────────
 
@@ -132,7 +131,7 @@ bool NetworkProtocolGMAIL::refresh_access_token()
     }
 
     std::string body = "refresh_token=" + url_encode(refresh_token);
-    std::string resp = api_post(GMAIL_RELAY_REFRESH_URL, body, "application/x-www-form-urlencoded");
+    std::string resp = api_post(Config.get_gdrive_relay() + "/gdrive-refresh", body, "application/x-www-form-urlencoded");
     if (resp.empty()) return false;
 
     cJSON *j = cJSON_Parse(resp.c_str());
