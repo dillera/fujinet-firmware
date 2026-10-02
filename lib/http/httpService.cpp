@@ -1953,11 +1953,11 @@ esp_err_t fnHttpService::get_handler_gdrive_poll(httpd_req_t *req)
         return ESP_OK;
     }
     if (error_node && cJSON_IsString(error_node)) {
-        const char *msg = error_node->valuestring;
-        Debug_printf("gdrive-poll: relay returned error: %s\n", msg);
+        std::string msg = error_node->valuestring; // copied: rj is freed below
+        Debug_printf("gdrive-poll: relay returned error: %s\n", msg.c_str());
         cJSON_Delete(rj);
         gdrive_auth_state.clear();
-        send_json("error", msg);
+        send_json("error", msg.c_str());
         return ESP_OK;
     }
     if (!at_node || !cJSON_IsString(at_node)) {
@@ -2098,11 +2098,11 @@ esp_err_t fnHttpService::get_handler_onedrive_poll(httpd_req_t *req)
         return ESP_OK;
     }
     if (error_node && cJSON_IsString(error_node)) {
-        const char *msg = error_node->valuestring;
-        Debug_printf("onedrive-poll: relay returned error: %s\n", msg);
+        std::string msg = error_node->valuestring; // copied: rj is freed below
+        Debug_printf("onedrive-poll: relay returned error: %s\n", msg.c_str());
         cJSON_Delete(rj);
         onedrive_auth_state.clear();
-        send_json("error", msg);
+        send_json("error", msg.c_str());
         return ESP_OK;
     }
     if (!at_node || !cJSON_IsString(at_node)) {

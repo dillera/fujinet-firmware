@@ -1300,9 +1300,9 @@ int fnHttpService::get_handler_gdrive_poll(mg_connection *c, mg_http_message *hm
         cJSON_Delete(rj); gdrive_auth_state.clear(); send_json("expired"); return 0;
     }
     if (error_node && cJSON_IsString(error_node)) {
-        const char *msg = error_node->valuestring;
-        Debug_printf("gdrive-poll: relay returned error: %s\n", msg);
-        cJSON_Delete(rj); gdrive_auth_state.clear(); send_json("error", msg); return 0;
+        std::string msg = error_node->valuestring; // copied: rj is freed below
+        Debug_printf("gdrive-poll: relay returned error: %s\n", msg.c_str());
+        cJSON_Delete(rj); gdrive_auth_state.clear(); send_json("error", msg.c_str()); return 0;
     }
     if (!at_node || !cJSON_IsString(at_node)) {
         cJSON_Delete(rj); send_json("pending"); return 0;
@@ -1406,9 +1406,9 @@ int fnHttpService::get_handler_onedrive_poll(mg_connection *c, mg_http_message *
         cJSON_Delete(rj); onedrive_auth_state.clear(); send_json("expired"); return 0;
     }
     if (error_node && cJSON_IsString(error_node)) {
-        const char *msg = error_node->valuestring;
-        Debug_printf("onedrive-poll: relay returned error: %s\n", msg);
-        cJSON_Delete(rj); onedrive_auth_state.clear(); send_json("error", msg); return 0;
+        std::string msg = error_node->valuestring; // copied: rj is freed below
+        Debug_printf("onedrive-poll: relay returned error: %s\n", msg.c_str());
+        cJSON_Delete(rj); onedrive_auth_state.clear(); send_json("error", msg.c_str()); return 0;
     }
     if (!at_node || !cJSON_IsString(at_node)) {
         cJSON_Delete(rj); send_json("pending"); return 0;
