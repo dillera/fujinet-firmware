@@ -7,6 +7,7 @@ HotSync service, on a FujiNet or FujiNet-PC, without a device in a cradle.
 
     fake_palm.py 192.168.1.252             # sync once
     fake_palm.py localhost --port 14238 --state palm.json --show
+    fake_palm.py 192.168.1.252 --user "Test Palm" --state test.json
 
 Only what FujiNet's sync uses is implemented: user and system info, opening
 DatebookDB, reading, writing and deleting its records, the clock, the sync
@@ -216,6 +217,9 @@ def main():
                    help="JSON file holding this Palm's user and Date Book")
     p.add_argument("--show", action="store_true", help="print the whole Date Book afterwards")
     p.add_argument("--verbose", action="store_true", help="print each DLP request")
+    p.add_argument("--user", default="Fake Palm",
+                   help="user name of a new Palm; keep it apart from real devices, since "
+                        "FujiNet keeps each user's records under its name")
     opts = p.parse_args()
 
     state = {}
@@ -223,6 +227,9 @@ def main():
         with open(opts.state) as f:
             state = json.load(f)
     palm = Palm(state)
+    if not palm.user["name"]:
+        palm.user["name"] = opts.user
+        palm.user["id"] = 0x46414B45
 
     sock = socket.create_connection((opts.host, opts.port), timeout=60)
     link = Link(sock)
