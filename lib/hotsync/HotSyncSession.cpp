@@ -205,6 +205,12 @@ DlpError HotSyncSession::sync_datebook()
     DlpError err = conduit.sync(*_options.calendar, options, r);
     if (is_fatal(err))
         return err;
+    if (err == DlpError::NOT_FOUND)
+    {
+        // The Date Book app creates its database the first time it runs.
+        log("No Date Book yet: open Date Book once, then HotSync again");
+        return DlpError::NONE;
+    }
     if (err != DlpError::NONE)
     {
         log(std::string("Date Book not synced: ") + dlp_error_name(err));

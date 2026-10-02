@@ -186,7 +186,7 @@ DlpError DatebookConduit::sync(const std::vector<HotSyncEvent> &events,
     if (load_map(old_map).is_error())
     {
         Debug_printf("HotSync: cannot read %s, Date Book left alone\r\n", MAP_NAME);
-        return DlpError::NOT_FOUND;
+        return DlpError::SYSTEM;
     }
 
     uint8_t db = 0;
