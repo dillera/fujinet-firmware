@@ -1556,6 +1556,10 @@
 											statusEl.textContent = "Poll error.";
 										});
 								}
+								// Enter in the address box would submit the settings form.
+								document.getElementById("gdrive-paste").addEventListener("keydown", function(e) {
+									if (e.key === "Enter") { e.preventDefault(); document.getElementById("gdrive-finish-btn").click(); }
+								});
 								document.getElementById("gdrive-finish-btn").addEventListener("click", function(e) {
 									e.preventDefault();
 									var text = document.getElementById("gdrive-paste").value.trim();

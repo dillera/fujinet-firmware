@@ -1892,7 +1892,8 @@ esp_err_t fnHttpService::get_handler_gdrive_poll(httpd_req_t *req)
     httpd_query_key_value(qbuf.c_str(), "state", state, sizeof(state));
 
     if (!state[0] || gdrive_auth_state.empty() || std::string(state) != gdrive_auth_state) {
-        send_json("error", "state mismatch");
+        Debug_printf("gdrive-poll: state mismatch\n");
+        send_json("error", "state mismatch - click Authorize again");
         return ESP_OK;
     }
 
@@ -1909,6 +1910,10 @@ esp_err_t fnHttpService::get_handler_gdrive_poll(httpd_req_t *req)
             return ESP_OK;
         }
         relay_status = gdrive_do_post(GOOGLE_TOKEN_URL, google_code_body(decoded).c_str(), relay_body);
+        Debug_printf("gdrive-poll: Google token exchange: HTTP %d, %u bytes\n", relay_status,
+                     (unsigned)relay_body.size());
+        if (relay_status != 200)
+            Debug_printf("gdrive-poll: Google says: %s\n", relay_body.c_str());
         if (relay_body.empty() && relay_status > 0) {
             send_json("error", ("Google answered HTTP " + std::to_string(relay_status)).c_str());
             return ESP_OK;
