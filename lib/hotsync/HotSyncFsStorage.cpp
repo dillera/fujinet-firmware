@@ -48,9 +48,9 @@ std::vector<std::string> HotSyncFsStorage::pending_installs()
     return names;
 }
 
-success_is_true HotSyncFsStorage::read_install(const std::string &file_name, ByteBuffer &out)
+success_is_true HotSyncFsStorage::read_file(const std::string &file, ByteBuffer &out)
 {
-    FILE *f = _fs.file_open(path("install", file_name).c_str(), FILE_READ);
+    FILE *f = _fs.file_open(file.c_str(), FILE_READ);
     if (f == nullptr)
         RETURN_ERROR_AS_FALSE();
     long size = FileSystem::filesize(f);
@@ -58,6 +58,24 @@ success_is_true HotSyncFsStorage::read_install(const std::string &file_name, Byt
     size_t got = fread(out.data(), 1, out.size(), f);
     fclose(f);
     RETURN_SUCCESS_IF(size > 0 && got == out.size());
+}
+
+success_is_true HotSyncFsStorage::write_file(const std::string &dir, const std::string &file_name,
+                                             const ByteBuffer &data)
+{
+    if (ensure_dir(dir).is_error())
+        RETURN_ERROR_AS_FALSE();
+    FILE *f = _fs.file_open((dir + "/" + file_name).c_str(), FILE_WRITE);
+    if (f == nullptr)
+        RETURN_ERROR_AS_FALSE();
+    size_t wrote = fwrite(data.data(), 1, data.size(), f);
+    fclose(f);
+    RETURN_SUCCESS_IF(wrote == data.size());
+}
+
+success_is_true HotSyncFsStorage::read_install(const std::string &file_name, ByteBuffer &out)
+{
+    return read_file(path("install", file_name), out);
 }
 
 success_is_true HotSyncFsStorage::mark_installed(const std::string &file_name)
@@ -73,13 +91,17 @@ success_is_true HotSyncFsStorage::mark_installed(const std::string &file_name)
 success_is_true HotSyncFsStorage::write_backup(const std::string &user, const std::string &file_name,
                                                const ByteBuffer &data)
 {
-    std::string dir = path("backup/" + user);
-    if (ensure_dir(dir).is_error())
-        RETURN_ERROR_AS_FALSE();
-    FILE *f = _fs.file_open((dir + "/" + file_name).c_str(), FILE_WRITE);
-    if (f == nullptr)
-        RETURN_ERROR_AS_FALSE();
-    size_t wrote = fwrite(data.data(), 1, data.size(), f);
-    fclose(f);
-    RETURN_SUCCESS_IF(wrote == data.size());
+    return write_file(path("backup/" + user), file_name, data);
+}
+
+success_is_true HotSyncFsStorage::read_state(const std::string &user, const std::string &name,
+                                             ByteBuffer &out)
+{
+    return read_file(path("state/" + user, name), out);
+}
+
+success_is_true HotSyncFsStorage::write_state(const std::string &user, const std::string &name,
+                                              const ByteBuffer &data)
+{
+    return write_file(path("state/" + user), name, data);
 }

@@ -2,10 +2,13 @@
 #define HOTSYNC_SESSION_H
 
 // One HotSync, from the first DLP request to EndOfSync: install queued files,
-// back up databases, then stamp the device's user info.
+// copy calendar events into the Date Book, back up databases, then stamp the
+// device's user info.
 // Reference: palm-sync src/sync-utils/{sync-device,write-db,read-db}.ts
 
+#include "DatebookConduit.h"
 #include "DlpClient.h"
+#include "HotSyncCalendar.h"
 #include "HotSyncStorage.h"
 #include "PalmDatabase.h"
 
@@ -27,6 +30,16 @@ struct HotSyncOptions {
     HotSyncBackup backup = HotSyncBackup::FLAGGED;
     // Wall-clock time of the sync; a zero year leaves the device's date alone.
     DlpDateTime now;
+    // The same moment in seconds since 1970 UTC, or 0 when the clock is unset.
+    int64_t utc_now = 0;
+
+    // Events for the Date Book, fetched for [calendar_from, calendar_to);
+    // null leaves the Date Book alone.
+    const std::vector<HotSyncEvent> *calendar = nullptr;
+    int64_t calendar_from = 0;
+    int64_t calendar_to = 0;
+    // POSIX zone of the Palm's clock. Empty reads it off the Palm's clock.
+    std::string timezone;
 };
 
 struct HotSyncReport {
@@ -35,6 +48,8 @@ struct HotSyncReport {
     int install_failures = 0;
     int backed_up = 0;
     int backup_failures = 0;
+    bool calendar_synced = false;
+    DatebookSyncReport datebook;
     DlpError error = DlpError::NONE;
 };
 
@@ -52,6 +67,7 @@ private:
     DlpError install_file(const std::string &file_name);
     DlpError write_database(const PalmDatabase &db);
     DlpError write_contents(uint8_t handle, const PalmDatabase &db);
+    DlpError sync_datebook();
     DlpError backup_databases();
     DlpError backup_database(const DlpDbInfo &info);
     DlpError read_contents(uint8_t handle, PalmDatabase &db);

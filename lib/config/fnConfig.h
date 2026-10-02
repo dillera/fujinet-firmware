@@ -335,6 +335,9 @@ public:
     int get_hotsync_netsync_port() { return _hotsync.netsync_port; }
     int get_hotsync_emulator_port() { return _hotsync.emulator_port; }
     std::string get_hotsync_serial_port() { return _hotsync.serial_port; }
+    std::string get_hotsync_calendar() { return _hotsync.calendar; }
+    int get_hotsync_calendar_days_back() { return _hotsync.calendar_days_back; }
+    int get_hotsync_calendar_days_ahead() { return _hotsync.calendar_days_ahead; }
     void store_hotsync_enabled(bool enabled);
     void store_hotsync_user(const std::string &user);
     void store_hotsync_backup(const std::string &backup);
@@ -552,6 +555,15 @@ private:
 #else
         std::string serial_port;
 #endif
+        // Calendar copied into the Palm Date Book: a GCAL: or ICAL: devicespec
+        // such as "GCAL:///" (the calendars shown in Google). Empty turns it off.
+#ifdef HOTSYNC_CRADLE_DEFAULT
+        std::string calendar = "GCAL:///";
+#else
+        std::string calendar;
+#endif
+        int calendar_days_back = 7;
+        int calendar_days_ahead = 60;
     };
 
 #if defined(BUILD_RS232) || !defined(ESP_PLATFORM)

@@ -232,6 +232,9 @@ set(SOURCES src/main.cpp
     lib/hotsync/DlpClient.h lib/hotsync/DlpClient.cpp
     lib/hotsync/PalmDatabase.h lib/hotsync/PalmDatabase.cpp
     lib/hotsync/HotSyncSession.h lib/hotsync/HotSyncSession.cpp
+    lib/hotsync/Datebook.h lib/hotsync/Datebook.cpp
+    lib/hotsync/DatebookConduit.h lib/hotsync/DatebookConduit.cpp
+    lib/hotsync/HotSyncNetCalendar.h lib/hotsync/HotSyncNetCalendar.cpp
     lib/hotsync/HotSyncFsStorage.h lib/hotsync/HotSyncFsStorage.cpp
     lib/hotsync/HotSyncLinks.h lib/hotsync/HotSyncLinks.cpp
     lib/hotsync/HotSyncService.h lib/hotsync/HotSyncService.cpp

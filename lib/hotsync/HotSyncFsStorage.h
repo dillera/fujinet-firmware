@@ -20,8 +20,15 @@ public:
     success_is_true mark_installed(const std::string &file_name) override;
     success_is_true write_backup(const std::string &user, const std::string &file_name,
                                  const ByteBuffer &data) override;
+    success_is_true read_state(const std::string &user, const std::string &name,
+                               ByteBuffer &out) override;
+    success_is_true write_state(const std::string &user, const std::string &name,
+                                const ByteBuffer &data) override;
 
 private:
+    success_is_true read_file(const std::string &file, ByteBuffer &out);
+    success_is_true write_file(const std::string &dir, const std::string &file_name,
+                               const ByteBuffer &data);
     std::string path(const std::string &folder, const std::string &file_name = "") const;
     success_is_true ensure_dir(const std::string &dir);
 

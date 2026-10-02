@@ -13,6 +13,7 @@
 //   install/              .prc/.pdb/.pqa files queued for the next sync
 //   installed/            files moved here once installed
 //   backup/<user>/        databases read back from the device
+//   state/<user>/         what conduits remember between syncs
 class HotSyncStorage
 {
 public:
@@ -23,6 +24,10 @@ public:
     virtual success_is_true mark_installed(const std::string &file_name) = 0;
     virtual success_is_true write_backup(const std::string &user, const std::string &file_name,
                                          const ByteBuffer &data) = 0;
+    virtual success_is_true read_state(const std::string &user, const std::string &name,
+                                       ByteBuffer &out) = 0;
+    virtual success_is_true write_state(const std::string &user, const std::string &name,
+                                        const ByteBuffer &data) = 0;
 };
 
 #endif // HOTSYNC_STORAGE_H

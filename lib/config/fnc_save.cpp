@@ -218,6 +218,9 @@ void fnConfig::save()
     ss << "netsync_port=" << _hotsync.netsync_port << LINETERM;
     ss << "emulator_port=" << _hotsync.emulator_port << LINETERM;
     ss << "serial_port=" << _hotsync.serial_port << LINETERM;
+    ss << "calendar=" << _hotsync.calendar << LINETERM;
+    ss << "calendar_days_back=" << _hotsync.calendar_days_back << LINETERM;
+    ss << "calendar_days_ahead=" << _hotsync.calendar_days_ahead << LINETERM;
 
 #ifndef ESP_PLATFORM
     // SERIAL

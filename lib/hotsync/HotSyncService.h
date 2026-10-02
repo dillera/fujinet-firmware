@@ -9,14 +9,17 @@
 // Each sync installs the files queued in <root>/install and backs databases
 // up to <root>/backup/<user>.
 
+#include "HotSyncCalendar.h"
 #include "HotSyncSession.h"
 #include "HotSyncSharedCradle.h"
 
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 class FileSystem;
 class fnTcpServer;
@@ -32,6 +35,12 @@ struct HotSyncServiceConfig {
     // Serial device for a cradle: a host device path on FujiNet-PC, or
     // HOTSYNC_BUS_SERIAL_PORT to share the bus line. Empty disables it.
     std::string serial_port;
+    // Calendar for the Date Book (see HotSyncNetCalendar); empty disables it.
+    std::string calendar;
+    int calendar_days_back = 7;
+    int calendar_days_ahead = 60;
+    // POSIX zone of the Palm's clock; empty or UTC reads it off the Palm.
+    std::string timezone;
 };
 
 constexpr const char *HOTSYNC_BUS_SERIAL_PORT = "bus";
@@ -65,6 +74,7 @@ private:
     void listen_for_hotsync(SerialCradle &cradle);
     void sync(HotSyncLink &link, Transport transport);
     HotSyncOptions session_options() const;
+    void refresh_calendar();
     void record(const HotSyncReport &report);
 
     HotSyncServiceConfig _config;
@@ -78,6 +88,14 @@ private:
     std::string _last_result = "No HotSync yet";
 
     std::unique_ptr<SerialCradle> _cradle;
+
+    // Fetched ahead of time, so a sync does not keep the Palm waiting.
+    std::unique_ptr<HotSyncCalendar> _calendar;
+    std::vector<HotSyncEvent> _events;
+    int64_t _events_from = 0;
+    int64_t _events_to = 0;
+    bool _have_events = false;
+    std::chrono::steady_clock::time_point _next_calendar_fetch;
 };
 
 class fnConfig;

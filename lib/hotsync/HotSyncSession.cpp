@@ -48,6 +48,8 @@ HotSyncReport HotSyncSession::run()
         err = _dlp.open_conduit();
     if (err == DlpError::NONE)
         err = install_pending();
+    if (err == DlpError::NONE && _options.calendar != nullptr)
+        err = sync_datebook();
     if (err == DlpError::NONE)
         err = backup_databases();
     if (err == DlpError::NONE)
@@ -163,6 +165,41 @@ DlpError HotSyncSession::write_contents(uint8_t handle, const PalmDatabase &db)
     for (size_t i = 0; err == DlpError::NONE && i < db.records.size(); ++i)
         err = _dlp.write_record(handle, db.records[i]);
     return err;
+}
+
+DlpError HotSyncSession::sync_datebook()
+{
+    DatebookSyncOptions options;
+    options.from = _options.calendar_from;
+    options.to = _options.calendar_to;
+    if (_options.timezone.empty() || !options.tz.parse(_options.timezone))
+    {
+        DlpDateTime palm;
+        DlpError err = _dlp.get_sys_date_time(palm);
+        if (is_fatal(err))
+            return err;
+        if (err == DlpError::NONE && _options.utc_now != 0)
+        {
+            int64_t local = fn_time::fn_timegm(palm.year, palm.month, palm.day, palm.hour,
+                                               palm.minute, palm.second);
+            options.tz = datebook_zone_from_offset(static_cast<int>(local - _options.utc_now));
+        }
+    }
+
+    DatebookConduit conduit(_dlp, _storage, hotsync_safe_name(_user.user_name));
+    DatebookSyncReport &r = _report.datebook;
+    DlpError err = conduit.sync(*_options.calendar, options, r);
+    if (is_fatal(err))
+        return err;
+    if (err != DlpError::NONE)
+    {
+        log(std::string("Date Book not synced: ") + dlp_error_name(err));
+        return DlpError::NONE;
+    }
+    _report.calendar_synced = true;
+    log("Date Book: " + std::to_string(r.added) + " added, " + std::to_string(r.updated) +
+        " updated, " + std::to_string(r.deleted) + " removed");
+    return DlpError::NONE;
 }
 
 DlpError HotSyncSession::backup_databases()
