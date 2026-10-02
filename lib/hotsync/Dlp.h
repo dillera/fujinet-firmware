@@ -28,6 +28,7 @@ enum class DlpFunc : uint8_t {
     WriteSortBlock = 0x1E,
     ReadRecord = 0x20,
     WriteRecord = 0x21,
+    DeleteRecord = 0x22,
     ReadResource = 0x23,
     WriteResource = 0x24,
     ResetSystem = 0x29,

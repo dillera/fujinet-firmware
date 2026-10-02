@@ -60,6 +60,11 @@ struct DlpDbInfo {
     std::string name;
 };
 
+// DlpRecord::attributes bits.
+constexpr uint8_t DLP_RECORD_DELETED = 0x80;
+constexpr uint8_t DLP_RECORD_DIRTY = 0x40;
+constexpr uint8_t DLP_RECORD_ARCHIVED = 0x08;
+
 struct DlpRecord {
     uint32_t id = 0;
     uint8_t attributes = 0;
@@ -108,8 +113,14 @@ public:
     DlpError write_app_block(uint8_t db_handle, const ByteBuffer &data);
     DlpError write_sort_block(uint8_t db_handle, const ByteBuffer &data);
 
+    DlpError get_sys_date_time(DlpDateTime &out);
+
     DlpError read_record_by_index(uint8_t db_handle, uint16_t index, DlpRecord &out);
+    DlpError read_record_by_id(uint8_t db_handle, uint32_t record_id, DlpRecord &out);
     DlpError write_record(uint8_t db_handle, const DlpRecord &record);
+    // record.id 0 adds a record; new_id is the ID the device gave it.
+    DlpError write_record(uint8_t db_handle, const DlpRecord &record, uint32_t &new_id);
+    DlpError delete_record(uint8_t db_handle, uint32_t record_id);
     DlpError read_resource_by_index(uint8_t db_handle, uint16_t index, DlpResource &out);
     DlpError write_resource(uint8_t db_handle, const DlpResource &resource);
 

@@ -249,14 +249,8 @@ DlpError DlpClient::write_sort_block(uint8_t db_handle, const ByteBuffer &data)
     return write_block(DlpFunc::WriteSortBlock, db_handle, data);
 }
 
-DlpError DlpClient::read_record_by_index(uint8_t db_handle, uint16_t index, DlpRecord &out)
+static DlpError read_record_reply(const DlpResponse &response, DlpRecord &out)
 {
-    DlpRequest request(DlpFunc::ReadRecord);
-    request.arg(DlpArgWriter().u8(db_handle).u8(0).u16(index).u16(0).u16(DLP_READ_WHOLE), 1);
-    DlpResponse response;
-    DlpError err = execute(request, response);
-    if (err != DlpError::NONE)
-        return err;
     DlpArgReader reader(response.arg(0));
     out.id = reader.u32();
     reader.skip(4); // index, size
@@ -266,7 +260,46 @@ DlpError DlpClient::read_record_by_index(uint8_t db_handle, uint16_t index, DlpR
     return reader.failed() ? DlpError::TRANSPORT : DlpError::NONE;
 }
 
+DlpError DlpClient::read_record_by_index(uint8_t db_handle, uint16_t index, DlpRecord &out)
+{
+    DlpRequest request(DlpFunc::ReadRecord);
+    request.arg(DlpArgWriter().u8(db_handle).u8(0).u16(index).u16(0).u16(DLP_READ_WHOLE), 1);
+    DlpResponse response;
+    DlpError err = execute(request, response);
+    if (err != DlpError::NONE)
+        return err;
+    return read_record_reply(response, out);
+}
+
+DlpError DlpClient::get_sys_date_time(DlpDateTime &out)
+{
+    DlpResponse response;
+    DlpError err = execute(DlpRequest(DlpFunc::GetSysDateTime), response);
+    if (err != DlpError::NONE)
+        return err;
+    DlpArgReader reader(response.arg(0));
+    out = read_date_time(reader);
+    return reader.failed() ? DlpError::TRANSPORT : DlpError::NONE;
+}
+
+DlpError DlpClient::read_record_by_id(uint8_t db_handle, uint32_t record_id, DlpRecord &out)
+{
+    DlpRequest request(DlpFunc::ReadRecord);
+    request.arg(DlpArgWriter().u8(db_handle).u8(0).u32(record_id).u16(0).u16(DLP_READ_WHOLE));
+    DlpResponse response;
+    DlpError err = execute(request, response);
+    if (err != DlpError::NONE)
+        return err;
+    return read_record_reply(response, out);
+}
+
 DlpError DlpClient::write_record(uint8_t db_handle, const DlpRecord &record)
+{
+    uint32_t new_id = 0;
+    return write_record(db_handle, record, new_id);
+}
+
+DlpError DlpClient::write_record(uint8_t db_handle, const DlpRecord &record, uint32_t &new_id)
 {
     static constexpr uint8_t WRITE_RECORD_FLAGS = 0x80;
     DlpRequest request(DlpFunc::WriteRecord);
@@ -277,6 +310,19 @@ DlpError DlpClient::write_record(uint8_t db_handle, const DlpRecord &record)
                     .u8(record.attributes)
                     .u8(record.category)
                     .bytes(record.data));
+    DlpResponse response;
+    DlpError err = execute(request, response);
+    if (err != DlpError::NONE)
+        return err;
+    DlpArgReader reader(response.arg(0));
+    new_id = reader.u32();
+    return reader.failed() ? DlpError::TRANSPORT : DlpError::NONE;
+}
+
+DlpError DlpClient::delete_record(uint8_t db_handle, uint32_t record_id)
+{
+    DlpRequest request(DlpFunc::DeleteRecord);
+    request.arg(DlpArgWriter().u8(db_handle).u8(0).u32(record_id));
     DlpResponse response;
     return execute(request, response);
 }
