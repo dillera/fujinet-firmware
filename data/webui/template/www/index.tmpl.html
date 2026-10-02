@@ -1578,10 +1578,21 @@
 											statusEl.textContent = "Could not reach FujiNet.";
 										});
 								});
+								// Save a client typed into the panel first, so Authorize uses it.
+								function saveClient() {
+									var form = document.getElementById("gdrive-auth-btn").form;
+									var id = form.elements["gdrive_client_id"].value.trim();
+									var secret = form.elements["gdrive_client_secret"].value.trim();
+									if (!secret) return Promise.resolve();
+									var body = new URLSearchParams();
+									body.append("gdrive_client_id", id || "default");
+									body.append("gdrive_client_secret", secret);
+									return fetch("/config", {method: "POST", body: body});
+								}
 								document.getElementById("gdrive-auth-btn").addEventListener("click", function(e) {
 									e.preventDefault(); this.disabled = true;
 									statusEl.textContent = "Starting...";
-									fetch("/gdrive-auth").then(function(r){ return r.json(); }).then(function(d){
+									saveClient().then(function(){ return fetch("/gdrive-auth"); }).then(function(r){ return r.json(); }).then(function(d){
 										if (d.error) {
 											document.getElementById("gdrive-auth-btn").disabled = false;
 											statusEl.textContent = "Error: " + d.error;
