@@ -16,6 +16,7 @@
 
 #include "../../include/debug.h"
 #include "../config/fnConfig.h"
+#include "../http/google_oauth.h"
 #include "../utils/string_utils.h"
 #include "status_error_codes.h"
 
@@ -138,8 +139,8 @@ bool NetworkProtocolGCAL::refresh_access_token()
         return false;
     }
 
-    std::string body = "refresh_token=" + url_encode(refresh_token);
-    std::string resp = api_post(Config.get_gdrive_relay() + "/gdrive-refresh", body, "application/x-www-form-urlencoded");
+    std::string body = google_refresh_body(refresh_token);
+    std::string resp = api_post(google_refresh_url(), body, "application/x-www-form-urlencoded");
     if (resp.empty()) return false;
 
     cJSON *j = cJSON_Parse(resp.c_str());

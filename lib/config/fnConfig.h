@@ -267,6 +267,9 @@ public:
     // The OAuth client and the relay that holds its secret; see tools/gdrive-relay.
     std::string get_gdrive_client_id() { return _gdrive.client_id; };
     std::string get_gdrive_relay() { return _gdrive.relay; };
+    // Set for a "Desktop app" client of the user's own; see lib/http/google_oauth.h.
+    std::string get_gdrive_client_secret() { return _gdrive.client_secret; };
+    void store_gdrive_client(const std::string &client_id, const std::string &client_secret);
     void store_gdrive_refresh_token(const std::string &refresh_token);
     void store_gdrive_access_token(const std::string &access_token);
     void store_gdrive_token_expiry(long expiry);
@@ -611,6 +614,7 @@ private:
         long token_expiry = 0;
         std::string client_id = GOOGLE_DEFAULT_CLIENT_ID;
         std::string relay = GOOGLE_DEFAULT_RELAY;
+        std::string client_secret;
     };
 
     struct s3_info

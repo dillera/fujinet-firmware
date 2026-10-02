@@ -167,6 +167,8 @@ void fnConfig::save()
     ss << "token_expiry=" << _gdrive.token_expiry << LINETERM;
     if (_gdrive.client_id != GOOGLE_DEFAULT_CLIENT_ID)
         ss << "client_id=" << _gdrive.client_id << LINETERM;
+    if (!_gdrive.client_secret.empty())
+        ss << "client_secret=" << _gdrive.client_secret << LINETERM;
     if (_gdrive.relay != GOOGLE_DEFAULT_RELAY)
         ss << "relay=" << _gdrive.relay << LINETERM;
 

@@ -537,6 +537,18 @@ void fnHttpServiceConfigurator::config_cpm_enabled(std::string cpm_enabled)
     Config.save();
 }
 
+// The Google Account form's own-client fields; "default" returns to the
+// project's client. Changing client drops the grant.
+void fnHttpServiceConfigurator::config_gdrive_client(const std::string &key, const std::string &value)
+{
+    bool reset = strcasecmp(value.c_str(), "default") == 0;
+    if (key == "gdrive_client_id")
+        Config.store_gdrive_client(reset ? "" : value, reset ? "" : Config.get_gdrive_client_secret());
+    else if (key == "gdrive_client_secret")
+        Config.store_gdrive_client(reset ? "" : Config.get_gdrive_client_id(), reset ? "" : value);
+    Config.save();
+}
+
 // The [HotSync] fields of the Palm HotSync form. An empty field is never
 // posted, so "off" clears the calendar.
 void fnHttpServiceConfigurator::config_hotsync(const std::string &key, const std::string &value)
@@ -858,6 +870,10 @@ int fnHttpServiceConfigurator::process_config_post(const char *postdata, size_t 
         else if (i->first.compare("cpm_ccp") == 0)
         {
             config_cpm_ccp(i->second);
+        }
+        else if (i->first == "gdrive_client_id" || i->first == "gdrive_client_secret")
+        {
+            config_gdrive_client(i->first, i->second);
         }
         else if (i->first.compare(0, 8, "hotsync_") == 0)
         {

@@ -17,6 +17,7 @@
 
 #include "fnSystem.h"
 #include "fnConfig.h"
+#include "google_oauth.h"
 #include "google_scopes.h"
 #include "fnPassword.h"
 #include "fnSession.h"
@@ -34,6 +35,7 @@
 #include "fnFsSD.h"
 #include "fujiDevice.h"
 #include "utils.h"
+#include "string_utils.h"
 #ifdef BUILD_ATARI
 #include "sio/sioFuji.h"
 #endif /* BUILD_ATARI */
@@ -1838,13 +1840,14 @@ esp_err_t fnHttpService::get_handler_gdrive_auth(httpd_req_t *req)
         "&access_type=offline"
         "&prompt=consent"
         "&client_id="    + gdrive_pct_encode(Config.get_gdrive_client_id()) +
-        "&redirect_uri=" + gdrive_pct_encode(Config.get_gdrive_relay() + "/gdrive-callback") +
+        "&redirect_uri=" + gdrive_pct_encode(google_redirect_uri()) +
         "&scope="        + gdrive_pct_encode(GOOGLE_OAUTH_SCOPES) +
         "&state="        + std::string(state);
 
     cJSON *out = cJSON_CreateObject();
     cJSON_AddStringToObject(out, "auth_url", auth_url.c_str());
     cJSON_AddStringToObject(out, "state",    state);
+    cJSON_AddStringToObject(out, "mode",     google_direct() ? "paste" : "relay");
     char *s = cJSON_PrintUnformatted(out);
     cJSON_Delete(out);
     httpd_resp_set_type(req, "application/json");
@@ -1893,10 +1896,30 @@ esp_err_t fnHttpService::get_handler_gdrive_poll(httpd_req_t *req)
         return ESP_OK;
     }
 
-    // Poll the relay for the finished tokens (relay does the exchange).
-    std::string relay_url = Config.get_gdrive_relay() + "/gdrive-code?state=" + state;
     std::string relay_body;
-    int relay_status = gdrive_do_get(relay_url.c_str(), relay_body);
+    int relay_status;
+    if (google_direct())
+    {
+        // The user pasted the code Google sent to the loopback address.
+        char code[512] = {};
+        httpd_query_key_value(qbuf.c_str(), "code", code, sizeof(code));
+        std::string decoded = mstr::urlDecode(code);
+        if (decoded.empty()) {
+            send_json("pending");
+            return ESP_OK;
+        }
+        relay_status = gdrive_do_post(GOOGLE_TOKEN_URL, google_code_body(decoded).c_str(), relay_body);
+        if (relay_body.empty() && relay_status > 0) {
+            send_json("error", ("Google answered HTTP " + std::to_string(relay_status)).c_str());
+            return ESP_OK;
+        }
+    }
+    else
+    {
+        // Poll the relay for the finished tokens (relay does the exchange).
+        std::string relay_url = Config.get_gdrive_relay() + "/gdrive-code?state=" + state;
+        relay_status = gdrive_do_get(relay_url.c_str(), relay_body);
+    }
 
     if (relay_status < 0) {
         send_json("error", "relay unreachable");

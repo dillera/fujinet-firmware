@@ -17,6 +17,7 @@
 
 #include "fnSystem.h"
 #include "fnConfig.h"
+#include "google_oauth.h"
 #include "google_scopes.h"
 #include "fnPassword.h"
 #include "fnSession.h"
@@ -1190,6 +1191,22 @@ static std::string gdrive_do_get(const std::string &url)
     return body;
 }
 
+// POST a form; returns the body whatever the status, so Google's error JSON
+// reaches the caller.
+static std::string gdrive_do_post(const std::string &url, const std::string &body, int &status)
+{
+    mgHttpClient http;
+    if (!http.begin(url)) return "";
+    http.set_header("Content-Type", "application/x-www-form-urlencoded");
+    status = http.POST(body.data(), (int)body.size());
+    std::string out;
+    uint8_t buf[512]; int n;
+    while ((n = http.read(buf, sizeof(buf))) > 0) out.append((char *)buf, n);
+    if (status < 200 || status >= 300)
+        Debug_printf("gdrive_do_post: HTTP %d: %s\n", status, out.c_str());
+    return out;
+}
+
 int fnHttpService::get_handler_gdrive_auth(mg_connection *c, mg_http_message *)
 {
     char state[16];
@@ -1203,13 +1220,14 @@ int fnHttpService::get_handler_gdrive_auth(mg_connection *c, mg_http_message *)
         "&access_type=offline"
         "&prompt=consent"
         "&client_id="    + gdrive_pct_encode(Config.get_gdrive_client_id()) +
-        "&redirect_uri=" + gdrive_pct_encode(Config.get_gdrive_relay() + "/gdrive-callback") +
+        "&redirect_uri=" + gdrive_pct_encode(google_redirect_uri()) +
         "&scope="        + gdrive_pct_encode(GOOGLE_OAUTH_SCOPES) +
         "&state="        + std::string(state);
 
     cJSON *out = cJSON_CreateObject();
     cJSON_AddStringToObject(out, "auth_url", auth_url.c_str());
     cJSON_AddStringToObject(out, "state",    state);
+    cJSON_AddStringToObject(out, "mode",     google_direct() ? "paste" : "relay");
     char *s = cJSON_PrintUnformatted(out);
     cJSON_Delete(out);
     mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s", s);
@@ -1237,8 +1255,28 @@ int fnHttpService::get_handler_gdrive_poll(mg_connection *c, mg_http_message *hm
         return 0;
     }
 
-    std::string relay_url = Config.get_gdrive_relay() + "/gdrive-code?state=" + state;
-    std::string relay_body = gdrive_do_get(relay_url);
+    std::string relay_body;
+    if (google_direct())
+    {
+        // The user pasted the code Google sent to the loopback address.
+        char code[512] = {};
+        mg_http_get_var(&hm->query, "code", code, sizeof(code));
+        if (!code[0]) {
+            send_json("pending");
+            return 0;
+        }
+        int status = 0;
+        relay_body = gdrive_do_post(GOOGLE_TOKEN_URL, google_code_body(code), status);
+        if (relay_body.empty()) {
+            send_json("error", ("Google answered HTTP " + std::to_string(status)).c_str());
+            return 0;
+        }
+    }
+    else
+    {
+        std::string relay_url = Config.get_gdrive_relay() + "/gdrive-code?state=" + state;
+        relay_body = gdrive_do_get(relay_url);
+    }
 
     if (relay_body.empty()) {
         send_json("error", "relay unreachable");

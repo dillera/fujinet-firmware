@@ -1486,9 +1486,38 @@
 								<p>Google may show an &ldquo;app isn&rsquo;t verified&rdquo; warning. Click <strong>Advanced &rarr; Go to FujiNet</strong> to continue.</p>
 								<p><strong>Already authorized?</strong> Calendar access was added later, so an older authorization does not include it. Authorize again to use <strong>GCAL:</strong>.</p>
 							</div>
+						<div class="set">
+							<div class="settings-label">
+								<label>Your own OAuth client ID (optional)</label>
+							</div>
+							<div class="settings-value">
+								<input type="text" name="gdrive_client_id" value="<%FN_GDRIVE_CLIENT_ID%>">
+							</div>
+						</div>
+						<div class="set">
+							<div class="settings-label">
+								<label>Its client secret</label>
+							</div>
+							<div class="settings-value">
+								<input type="password" name="gdrive_client_secret" autocomplete="off">
+							</div>
+						</div>
+						<div class="settings-text">
+							<p>To use a <strong>Desktop app</strong> OAuth client from your own Google Cloud project instead of FujiNet's, enter its ID and secret and Save, then Authorize. Enter <strong>default</strong> to go back to FujiNet's. Changing client signs FujiNet out of Google.</p>
+						</div>
+						<div class="set" id="gdrive-paste-row" style="display:none">
+							<div class="settings-label">
+								<label>Address after approving</label>
+							</div>
+							<div class="settings-value">
+								<input type="text" id="gdrive-paste" placeholder="http://127.0.0.1/?state=...&amp;code=...">
+								<button id="gdrive-finish-btn" type="button">Finish</button>
+							</div>
+						</div>
 						</div>
 						<div class="settings-footer">
 							<div class="save-button">
+								<button type="submit" value="Save">Save</button>
 								<button id="gdrive-auth-btn" type="button">Authorize with Google</button>
 							</div>
 							<div class="settings-text" style="margin-top:0.5em">
@@ -1527,6 +1556,28 @@
 											statusEl.textContent = "Poll error.";
 										});
 								}
+								document.getElementById("gdrive-finish-btn").addEventListener("click", function(e) {
+									e.preventDefault();
+									var text = document.getElementById("gdrive-paste").value.trim();
+									var code = text;
+									try { code = new URL(text).searchParams.get("code") || text; } catch (err) {}
+									statusEl.textContent = "Finishing...";
+									fetch("/gdrive-poll?state=" + encodeURIComponent(pollState) + "&code=" + encodeURIComponent(code))
+										.then(function(r){ return r.json(); })
+										.then(function(d){
+											document.getElementById("gdrive-auth-btn").disabled = false;
+											if (d.status === "authorized") {
+												indicator.textContent = "Connected"; indicator.style.color = "green";
+												document.getElementById("gdrive-paste-row").style.display = "none";
+												statusEl.textContent = "Authorization complete!";
+											} else {
+												statusEl.textContent = "Authorization failed: " + (d.message || d.status);
+											}
+										}).catch(function(){
+											document.getElementById("gdrive-auth-btn").disabled = false;
+											statusEl.textContent = "Could not reach FujiNet.";
+										});
+								});
 								document.getElementById("gdrive-auth-btn").addEventListener("click", function(e) {
 									e.preventDefault(); this.disabled = true;
 									statusEl.textContent = "Starting...";
@@ -1538,6 +1589,11 @@
 										}
 										pollState = d.state;
 										window.open(d.auth_url, "_blank");
+										if (d.mode === "paste") {
+											document.getElementById("gdrive-paste-row").style.display = "";
+											statusEl.textContent = "Approve in the new tab. It then fails to load 127.0.0.1: copy that tab's whole address into the box here and click Finish.";
+											return;
+										}
 										statusEl.textContent = "Approve in the new tab, then wait...";
 										pollTimer = setInterval(doPoll, 3000);
 									}).catch(function(){
