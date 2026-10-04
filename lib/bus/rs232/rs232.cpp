@@ -281,11 +281,16 @@ void systemBus::setup()
 #if FUJINET_OVER_USB
         _serial.begin();
 #else /* ! FUJINET_OVER_USB */
-        _serial.begin(ChannelConfig()
-                      .baud(Config.get_serial_baud())
-                      .readTimeout(200)
-                      .deviceID(SERIAL_DEVICE)
-                      );
+        ChannelConfig serial_config;
+        serial_config.baud(Config.get_serial_baud())
+            .readTimeout(200)
+            .deviceID(SERIAL_DEVICE);
+#ifdef RS232_NO_HW_FLOW_CONTROL
+        // Without an RTS pin the channel skips hardware flow control and
+        // still raises CTS; a device that never raises RTS can then hear us.
+        serial_config.rtsPin(-1);
+#endif
+        _serial.begin(serial_config);
 #endif /* FUJINET_OVER_USB */
         _port = &_serial;
     }
