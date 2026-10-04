@@ -528,14 +528,23 @@ private:
 
     struct hotsync_info
     {
+#ifdef HOTSYNC_CRADLE_DEFAULT
+        // Boards built as a Palm cradle server share the bus port out of the box.
+        bool enabled = true;
+#else
         bool enabled = false;
+#endif
         std::string user = "FujiNet";
         // none, flagged (databases with the backup bit) or all
         std::string backup = "flagged";
         int netsync_port = 14238;
         int emulator_port = 6416;
         // Cradle serial device: a host path on FujiNet-PC, or "bus" to share the RS232 bus line
+#ifdef HOTSYNC_CRADLE_DEFAULT
+        std::string serial_port = "bus";
+#else
         std::string serial_port;
+#endif
     };
 
 #if defined(BUILD_RS232) || !defined(ESP_PLATFORM)

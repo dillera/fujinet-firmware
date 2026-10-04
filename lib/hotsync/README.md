@@ -29,7 +29,8 @@ queued for it on the SD card, and its databases are backed up there.
 - On the bus line, `rs232HotSync` in [lib/device/rs232/](../device/rs232/) is the
   `HotSyncSharedCradle`. A HotSync opens at 9600 baud, which the bus cannot read at its own rate, so
   while no host has sent FujiBus for a minute the service claims the line for 1.5 s windows and
-  listens for a WAKEUP; bytes that are not FujiBus end that minute early.
+  listens for a WAKEUP; bytes that are not FujiBus end that minute early. The
+  `fujinet-rs232-s3-palm` board defaults to it; the cradle goes on the DB-9 through a null modem.
 - On the SD card, `/palm/install/` holds files to install on the next sync, `/palm/installed/`
   the ones already installed, and `/palm/backup/<user>/` the backups.
 - Everything up to `HotSyncSession` depends only on `include/global_types.h`;
