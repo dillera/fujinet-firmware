@@ -13,6 +13,7 @@ cartridge board.
 | `printer.h`, `printer.cpp`, `printerlist.h`, `printerlist.cpp` | `rs232Printer` and `printerlist`; defines `fnPrinters` |
 | `modem.h`, `modem.cpp` | `rs232Modem` |
 | `rs232cpm.h`, `rs232cpm.cpp` | `rs232CPM`, CP/M through [lib/runcpm/](../../runcpm/) |
+| `rs232HotSync.h`, `rs232HotSync.cpp` | `rs232HotSync`, a Palm cradle sharing the bus line with FujiBus for [lib/hotsync/](../../hotsync/) |
 
 ## How it fits
 - Every class derives the `virtualDevice` of [lib/bus/rs232/](../../bus/rs232/) and implements
@@ -20,7 +21,8 @@ cartridge board.
 - `rs232Fuji` overrides `setup()`, `set_additional_direntry_details()`, `mount_media()` (to pass the
   host to the disk) and `appkey_read()`. `rs232Network` overrides `fujidev_set_query()`.
   `rs232Clock` overrides `fujidev_read_tz()` and `fujidev_alt_requested()`.
-- `src/main.cpp` adds the Fuji, clock, printer and modem devices.
+- `src/main.cpp` adds the Fuji, clock, printer and modem devices, and with `[HotSync]`
+  `serial_port=bus` an `rs232HotSync`, which the bus lends the line to; it takes no FujiBus commands.
 
 ## Build
 ESP: globbed by `src/CMakeLists.txt`, compiled only under `BUILD_RS232`. PC: `FUJINET_TARGET=RS232`

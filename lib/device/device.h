@@ -44,6 +44,7 @@
 # include "rs232/printerlist.h"
 # include "rs232/rs232cpm.h"
 # include "rs232/rs232Fuji.h"
+# include "rs232/rs232HotSync.h"
 
     rs232Modem *sioR;
     rs232CPM sioZ;
