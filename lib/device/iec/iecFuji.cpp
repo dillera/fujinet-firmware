@@ -146,12 +146,6 @@ void logResponse(const void* data, size_t length)
 }
 
 
-// IEC can't create disks.
-void iecFuji::fujicmd_new_disk()
-{
-    SYSTEM_BUS.transaction_error();
-}
-
 std::optional<std::string> iecFuji::fujidev_read_tz()
 {
     // Params and payload share one buffer; reading the length prefix off
