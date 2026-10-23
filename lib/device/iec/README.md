@@ -25,9 +25,9 @@ The Commodore device set for `BUILD_IEC`, on ESP32 and FujiNet-PC.
   supplies the `mediatype_t` values; image handling is in Meatloaf.
 
 ## Build
-ESP: globbed by `src/CMakeLists.txt`, compiled only under `BUILD_IEC`. PC: `FUJINET_TARGET=IEC`. On PC
-the drives see the flash directory as `/`; images mounted from a TNFS host are not readable there yet
-because Meatloaf reaches TNFS through the ESP VFS.
+ESP: globbed by `src/CMakeLists.txt`, compiled only under `BUILD_IEC`. PC: `FUJINET_TARGET=IEC`. With
+no VFS on PC, a drive reads a mounted image through the handle the Fuji device opened, attached to
+Meatloaf's `fnfile://` file system, and sees the flash directory as `/` otherwise.
 
 ## Notes
 `drive.h` can target a `USE_VDRIVE` backend whose headers are not in this tree.
