@@ -37,3 +37,19 @@ TEST_CASE("params are little-endian")
     REQUIRE(packet.data().has_value());
     CHECK(packet.data()->empty());
 }
+
+TEST_CASE("hasPayload() tells a command with a payload from one without")
+{
+    // fujinet-lib sends STATUS bare, and the clock's GET_SOS (also 0x53) with a flag
+    ByteBuffer flag{0x00};
+    FujiIECPacket status(DEV_FUJI, CMD::FUJI_STATUS);
+    FujiIECPacket sos(DEV_FUJI, CMD::APETIME_GET_SOS);
+
+    CHECK_FALSE(status.hasPayload());
+    CHECK_FALSE(sos.hasPayload());
+    sos.setPayload(flag);
+    CHECK(sos.hasPayload());
+    // Reading the params leaves the answer, and the params, alone
+    CHECK(sos.param8(0) == 0x00);
+    CHECK(sos.hasPayload());
+}

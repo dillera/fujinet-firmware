@@ -41,6 +41,10 @@ public:
 
     void setPayload(ByteBuffer &payload);
 
+    // False for a command sent with OPCODE_NO_PAYLOAD; unlike data(), this
+    // leaves the params readable.
+    bool hasPayload() const { return _payload.has_value(); }
+
     const std::optional<ByteBuffer>& data() const;
     const std::optional<const std::string> dataAsString() const {
         auto d = data();
