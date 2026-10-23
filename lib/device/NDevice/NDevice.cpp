@@ -347,7 +347,8 @@ void NDevice::fujidev_status(const FUJI_COMMAND_PACKET &packet)
 void NDevice::fujidev_get_prefix(const FUJI_COMMAND_PACKET &packet)
 {
     SYSTEM_BUS.transaction_accept(TRANS_STATE::NO_GET);
-    SYSTEM_BUS.transaction_send((uint8_t *)prefix.data(), prefix.size(), false);
+    std::string native = SYSTEM_BUS.unicodeTextToNative(prefix);
+    SYSTEM_BUS.transaction_send((uint8_t *)native.data(), native.size(), false);
 }
 
 error_is_true NDevice::fujicore_set_prefix(const std::string &pathSpec)
@@ -408,6 +409,7 @@ void NDevice::fujidev_set_prefix(const FUJI_COMMAND_PACKET &packet)
     SYSTEM_BUS.transaction_accept(TRANS_STATE::WILL_GET);
     SYSTEM_BUS.transaction_get(prefix);
     prefix.resize(strlen(prefix.c_str()));
+    prefix = SYSTEM_BUS.nativeTextToUnicode(prefix);
     if (fujicore_set_prefix(prefix).is_error())
     {
         SYSTEM_BUS.transaction_error();
@@ -706,6 +708,7 @@ void NDevice::fs_op(const FUJI_COMMAND_PACKET &packet, fujiError_t (NetworkProto
     SYSTEM_BUS.transaction_accept(TRANS_STATE::WILL_GET);
     SYSTEM_BUS.transaction_get(spec);
     resize_spec(spec);
+    spec = SYSTEM_BUS.nativeTextToUnicode(spec);
 
     std::unique_ptr<PeoplesUrlParser> url;
     if (parse_and_instantiate_protocol(spec, IS_DIR_MODE(mode), url).is_error())

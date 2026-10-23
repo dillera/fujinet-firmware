@@ -23,6 +23,9 @@ an 8-bit program query one value out of a JSON, XML or HTML document.
 - `NET_OPEN` parses the URL with `PeoplesUrlParser` and asks
   `NetworkProtocolFactory::createProtocol()` in [lib/network-protocol/](../../network-protocol/)
   for the adapter matching the scheme. The adapter owns the receive, transmit and special buffers.
+- Text from the host (device specs, `NET_CHDIR` and filesystem-operation paths, queries) goes
+  through `SYSTEM_BUS.nativeTextToUnicode()`, and `NET_GETCWD` sends the prefix back through
+  `unicodeTextToNative()`. Both are identity functions except on IEC, where they translate PETSCII.
 - `NET_SET_PARSER` swaps the `NParser`; with no parser set, reads and writes pass straight through
   to the protocol.
 - Platform differences are the `fujidev_*` virtuals (`fujidev_read`, `fujidev_write`,
