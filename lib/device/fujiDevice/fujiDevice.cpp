@@ -1760,7 +1760,9 @@ void fujiDevice::fujicmd_generate_guid()
 
     Debug_printf("GUID: %s\n", uuid_str);
 
-    SYSTEM_BUS.transaction_send(uuid_str, sizeof(uuid_str));
+    // Native text, so the host can put it in a devicespec and get it back unchanged
+    std::string guid = SYSTEM_BUS.unicodeTextToNative(uuid_str);
+    SYSTEM_BUS.transaction_send(guid.c_str(), guid.size() + 1);
 }
 
 void fujiDevice::fujicmd_random()
