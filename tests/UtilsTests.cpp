@@ -3,6 +3,8 @@
 
 #include "utils.h"
 #include "samlib.h"
+#include "string_utils.h"
+#include "U8Char.h"
 
 int sam(int argc, char **argv) { return 0; }
 
@@ -20,4 +22,13 @@ TEST_CASE("util_stoi returns nullopt where std::stoi throws")
     CHECK_FALSE(util_stoi("//10.4.0.19:1701").has_value());
     CHECK_FALSE(util_stoi("abc").has_value());
     CHECK_FALSE(util_stoi("99999999999999999999").has_value());
+}
+
+TEST_CASE("mstr::toUTF8 converts PETSCII bytes from 0x80 up and drops NUL")
+{
+    const char shiftedA = static_cast<char>(0xC1);
+    std::string expected = U8Char(shiftedA).toUtf8();
+    REQUIRE_FALSE(expected.empty());
+    CHECK(mstr::toUTF8(std::string(1, shiftedA)) == expected);
+    CHECK(mstr::toUTF8(std::string("\0", 1)).empty());
 }
