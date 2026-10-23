@@ -5,6 +5,7 @@
 #include "fnFsSD.h"
 #include "cbm_defines.h"
 #include "meat_media.h"
+#include "../meatloaf/device/fnfile.h"
 
 using namespace std;
 
@@ -1477,16 +1478,25 @@ void iecDrive::set_cwd(std::string path)
    If the disk_type value passed is not MEDIATYPE_UNKNOWN then that's used instead.
    Return value is MEDIATYPE_UNKNOWN in case of failure.
 */
-mediatype_t iecDrive::mount(FILE *f, const char *filename, uint32_t disksize,
+mediatype_t iecDrive::mount(fnFile *f, const char *filename, uint32_t disksize,
                             disk_access_flags_t access_mode, mediatype_t disk_type)
 {
   Debug_printv("filename[%s], disksize[%lu] disktype[%d]", filename, disksize, disk_type);
+#ifdef ESP_PLATFORM
   std::string url = this->m_host->get_basepath();
 
   mstr::toLower(url);
   if ( url == "sd" )
     url = "//sd";
   url += filename;
+#else
+  // No VFS on a host: read the image through the handle the Fuji device opened
+  FnFileMFileSystem::attach(mountName(), f);
+  std::string url = "fnfile://" + mountName();
+  if ( filename[0] != '/' )
+    url += "/";
+  url += filename;
+#endif
 
   Debug_printv("DRIVE[#%d] URL[%s] MOUNT[%s]", m_devnr, url.c_str(), filename);
 
@@ -1500,6 +1510,11 @@ mediatype_t iecDrive::mount(FILE *f, const char *filename, uint32_t disksize,
 void iecDrive::unmount()
 {
     Debug_printv("DRIVE[#%d] UNMOUNT\r\n", m_devnr);
+#ifndef ESP_PLATFORM
+    // the Fuji device closes the image's handle next
+    FnFileMFileSystem::detach(mountName());
+    m_cwd.reset( MFSOwner::File("/") );
+#endif
 
     // if (m_cwd != nullptr)
     // {
