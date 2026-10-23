@@ -36,7 +36,8 @@ class FlashMFile: public MFile
 friend class FlashMStream;
 
 public:
-    std::string basepath = "";
+    // Where the flash file system's "/" lives: the VFS root on ESP, a directory on a host
+    static std::string basepath;
     
     FlashMFile(std::string path): MFile(path) {
         // parseUrl( path );
@@ -61,7 +62,7 @@ public:
     //MFile* cd(std::string newDir);
     bool isDirectory() override;
     MStream* getSourceStream(std::ios_base::openmode mode=std::ios_base::in) override ; // has to return OPENED stream
-    MStream* getDecodedStream(std::shared_ptr<MStream> src);
+    MStream* getDecodedStream(std::shared_ptr<MStream> src) override;
     MStream* createStream(std::ios_base::openmode mode) override;
 
     bool rewindDirectory() override;
